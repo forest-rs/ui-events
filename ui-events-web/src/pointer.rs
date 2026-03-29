@@ -921,7 +921,9 @@ mod stylus_orientation_tests {
         let o = pointer_orientation_from_tilt_degrees(25.0, -10.0);
         let o_neg = pointer_orientation_from_tilt_degrees(-25.0, 10.0);
 
-        assert_approx(o.altitude, o_neg.altitude, 1e-6);
+        // `f32` trig can differ by just over 1e-6 radians on Miri's
+        // cross-target interpreter while preserving the symmetry invariant.
+        assert_approx(o.altitude, o_neg.altitude, 2e-6);
         assert_azimuth_approx(o_neg.azimuth, o.azimuth + core::f32::consts::PI, 1e-6);
     }
 

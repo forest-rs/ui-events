@@ -1,0 +1,26 @@
+[package]
+name = "ui-events-apple-common"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+description = "Shared Apple adapter mapping helpers for ui-events"
+keywords = ["apple", "input", "ui-events"]
+categories = ["gui"]
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+
+[features]
+default = ["std"]
+libm = []
+std = ["ui-events/std", "dpi/std"]
+
+[dependencies]
+ui-events.workspace = true
+dpi.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,39 @@
+[package]
+name = "ui-events-appkit"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+description = "Bridges AppKit (macOS) events into ui-events via objc2"
+keywords = ["apple", "macos", "appkit", "objc2", "input"]
+categories = ["gui"]
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "aarch64-apple-darwin"
+targets = []
+
+[features]
+default = ["std"]
+libm = ["dep:libm"]
+std = ["ui-events/std", "ui-events-apple-common/std", "dpi/std"]
+
+[dependencies]
+ui-events.workspace = true
+ui-events-apple-common.workspace = true
+dpi.workspace = true
+libm = { version = "0.2.15", optional = true, default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.2", default-features = false, features = ["std"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSEvent",
+    "NSResponder",
+    "objc2-core-foundation",
+] }
+
+[lints]
+workspace = true

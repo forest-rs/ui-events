@@ -13,10 +13,10 @@ env:
   RUST_MIN_NO_STD_VER: "1.85"
   # List of packages that will be checked with the minimum supported Rust version.
   # This should be limited to packages that are intended for publishing.
-  RUST_MIN_VER_PKGS: "-p ui-events -p ui-events-web -p ui-events-winit -p ui-input-state -p ui-theme"
+  RUST_MIN_VER_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-web -p ui-events-winit -p ui-input-state -p ui-theme"
   # List of packages that will be checked for `no_std` builds.
   # This should be limited to packages that are intended for publishing.
-  RUST_NO_STD_PKGS: "-p ui-events -p ui-input-state -p ui-theme"
+  RUST_NO_STD_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-input-state -p ui-theme"
   # List of features that depend on the standard library and will be excluded from no_std checks.
   FEATURES_DEPENDING_ON_STD: "std,default"
 
@@ -108,6 +108,15 @@ jobs:
         # supports being placed at the top level, which we want to avoid cluttering.
         run: cargo rdme --workspace-project=ui-events --heading-base-level=0 --check
 
+      - name: cargo rdme (ui-events-apple-common)
+        run: cargo rdme --workspace-project=ui-events-apple-common --heading-base-level=0 --check
+
+      - name: cargo rdme (ui-events-appkit)
+        run: cargo rdme --workspace-project=ui-events-appkit --heading-base-level=0 --check
+
+      - name: cargo rdme (ui-events-uikit)
+        run: cargo rdme --workspace-project=ui-events-uikit --heading-base-level=0 --check
+
       - name: cargo rdme (ui-events-web)
         run: cargo rdme --workspace-project=ui-events-web --heading-base-level=0 --check
 
@@ -183,6 +192,30 @@ jobs:
 
       - name: cargo clippy (auxiliary)
         run: cargo hack clippy --workspace --locked --target wasm32-unknown-unknown --optional-deps --each-feature --ignore-unknown-features --features std --tests --benches --examples -- -D warnings
+
+  apple-adapter-targets:
+    name: apple adapter targets
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install stable toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_STABLE_VER }}
+          targets: aarch64-apple-ios
+          components: clippy
+
+      - name: restore cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'merge_group' }}
+
+      - name: cargo check (iOS)
+        run: cargo check -p ui-events-uikit --locked --all-features --target aarch64-apple-ios
+
+      - name: cargo clippy (iOS)
+        run: cargo clippy -p ui-events-uikit --locked --all-features --target aarch64-apple-ios -- -D warnings
 
   test-stable:
     name: cargo test

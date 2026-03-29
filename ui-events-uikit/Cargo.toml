@@ -1,0 +1,62 @@
+[package]
+name = "ui-events-uikit"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+description = "Bridges UIKit (iOS/tvOS) events into ui-events via objc2"
+keywords = ["apple", "ios", "uikit", "objc2", "input"]
+categories = ["gui"]
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "aarch64-apple-ios"
+targets = []
+
+[features]
+default = ["std"]
+libm = ["dep:libm"]
+std = ["ui-events/std", "ui-events-apple-common/std", "dpi/std"]
+gestures = [
+    "objc2-ui-kit/UIGestureRecognizer",
+    "objc2-ui-kit/UIPinchGestureRecognizer",
+    "objc2-ui-kit/UIRotationGestureRecognizer",
+]
+
+[dependencies]
+ui-events.workspace = true
+ui-events-apple-common.workspace = true
+dpi.workspace = true
+libm = { version = "0.2.15", optional = true, default-features = false }
+
+[target.'cfg(any(target_os = "ios", target_os = "tvos"))'.dependencies]
+objc2 = { version = "0.6.2", default-features = false, features = ["std"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CFCGTypes",
+    "objc2",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSEnumerator",
+    "NSSet",
+] }
+objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "UICommand",
+    "UIEvent",
+    "UIPress",
+    "UIPressesEvent",
+    "UIResponder",
+    "UITouch",
+    "UIView",
+    "UIKey",
+    "UIKeyConstants",
+    "objc2-core-foundation",
+] }
+
+[lints]
+workspace = true

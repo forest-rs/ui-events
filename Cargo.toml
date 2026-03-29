@@ -2,12 +2,17 @@
 resolver = "2"
 members = [
     "ui-events",
+    "ui-events-apple-common",
+    "ui-events-appkit",
+    "ui-events-uikit",
     "ui-events-web",
     "ui-events-winit",
     "ui-input-state",
     "ui-theme",
     "examples/simple",
+    "examples/input_tracker",
     "examples/simple_web",
+    "examples/simple_appkit",
 ]
 
 [workspace.package]
@@ -74,6 +79,10 @@ clippy.wildcard_dependencies = "warn"
 
 [workspace.dependencies]
 dpi = { version = "0.1.2", default-features = false }
+example-input-tracker = { path = "examples/input_tracker" }
 ui-events = { version = "0.3.0", path = "ui-events", default-features = false }
+ui-events-apple-common = { version = "0.3.0", path = "ui-events-apple-common", default-features = false }
+ui-events-appkit = { version = "0.3.0", path = "ui-events-appkit" }
+ui-events-uikit = { version = "0.3.0", path = "ui-events-uikit" }
 ui-events-web = { version = "0.3.0", path = "ui-events-web" }
 web-time = "1.1.0"
