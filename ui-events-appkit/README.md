@@ -38,6 +38,8 @@ Currently supported:
 - Pointer (mouse/pen) down/up/move/enter/leave/scroll
 - Trackpad gestures: magnify (pinch) and rotate
 - Keyboard down/up
+- Text-input mapping helpers for committed text, composition updates, and
+  UTF-16 replacement ranges
 - `AppKitInputResponder`, a reusable `NSResponder` for pointer, scroll,
   gesture, tablet, and keyboard input
 
@@ -104,12 +106,22 @@ edit-command protocols.
   modifier while the other side remains held may still report the key as
   down until this adapter grows device-dependent left/right modifier masks.
 
+## Text Notes
+
+- [`text`] contains value-based helpers for translating AppKit UTF-16
+  location/length pairs and text callbacks into [`TextInputEvent`] values.
+- The reusable `AppKitInputResponder` still does not implement `NSTextInput`
+  protocols. Hosts that implement those protocols can use the text helpers
+  from their own responder or view.
+
 ## High-Level Helpers
 
 - `AppKitInputResponder`
 - `pointer_event_from_nsevent`
 - `pointer_event_from_nsevent_at_position`
 - `keyboard_event_from_nsevent`
+- `text::text_insert_event`
+- `text::composition_update_event_with_utf16_ranges`
 
 If you prefer, low-level mappers in [`mapping`] let you build events from
 raw values (e.g. coordinates, button number, modifier booleans) without
@@ -118,6 +130,7 @@ pulling in AppKit types in your own code.
 [`PointerType::Pen`]: ui_events::pointer::PointerType::Pen
 [`ScrollDelta::LineDelta`]: ui_events::ScrollDelta::LineDelta
 [`ScrollDelta::PixelDelta`]: ui_events::ScrollDelta::PixelDelta
+[`TextInputEvent`]: ui_events::text::TextInputEvent
 [`ui-events`]: https://docs.rs/ui-events/
 
 <!-- cargo-rdme end -->

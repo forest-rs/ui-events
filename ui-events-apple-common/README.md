@@ -45,6 +45,8 @@ decide which platform callbacks should become which high-level events.
 - Modifier helpers build [`Modifiers`] from platform modifier bits.
 - State helpers build [`PointerState`] and [`ScrollDelta`] from finite raw
   values already extracted by an adapter crate.
+- Text helpers build [`TextInputEvent`] values from UTF-16 ranges used by
+  Apple text-input APIs.
 
 These helpers are intentionally small and value-based. AppKit and UIKit
 crates still own all Objective-C selector access and platform-specific event
@@ -56,6 +58,7 @@ routing.
 [`PointerId::PRIMARY`]: ui_events::pointer::PointerId::PRIMARY
 [`PointerState`]: ui_events::pointer::PointerState
 [`ScrollDelta`]: ui_events::ScrollDelta
+[`TextInputEvent`]: ui_events::text::TextInputEvent
 [`ui-events`]: https://docs.rs/ui-events/
 
 <!-- cargo-rdme end -->

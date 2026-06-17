@@ -40,6 +40,8 @@ Currently supported:
 - Pencil hover enter/move/leave when UIKit reports region phases
 - tvOS remote presses → keyboard
 - Hardware keyboard via `UIPress` + `UIKey`
+- Text-input mapping helpers for committed text, composition updates, and
+  UTF-16 replacement ranges
 - `UIKitInputResponder`, a reusable `UIResponder` for touch, remote, and
   keyboard input
 
@@ -82,11 +84,21 @@ Currently supported:
   previous scale. Rotation gesture recognizers follow the same pattern with
   cumulative counterclockwise `rotation` values.
 
+## Text Notes
+
+- [`text`] contains value-based helpers for translating UIKit UTF-16
+  location/length pairs and text callbacks into [`TextInputEvent`] values.
+- The reusable `UIKitInputResponder` still does not implement `UIKeyInput`
+  or full text-input protocols. Hosts that implement those protocols can use
+  the text helpers from their own responder or view.
+
 ## High-Level Helpers
 
 - `UIKitInputResponder`
 - `keyboard_event_from_uipress`
 - `keyboard_event_from_uikey`
+- `text::text_insert_event`
+- `text::composition_update_event_with_utf16_ranges`
 - `pointer_event_from_touch_and_event`
 - `pointer_event_from_touch` (uncommon convenience helper)
 - `pointer_gesture_from_uipinch` (feature: `gestures`)
@@ -99,6 +111,7 @@ raw values (e.g. coordinates, button number, modifier booleans) without
 pulling in UIKit types in your own code.
 
 [`ui-events`]: https://docs.rs/ui-events/
+[`TextInputEvent`]: ui_events::text::TextInputEvent
 
 <!-- cargo-rdme end -->
 
