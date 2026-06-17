@@ -16,6 +16,11 @@ You can find its changes [documented below](#030-2026-01-18).
 This release has an [MSRV][] of 1.85.
 
 ### Added
+* Added `ui_events::text` with `TextInputEvent`, `TextInsertEvent`, `CompositionState`, and explicit range metadata for soft-keyboard and IME input.
+* Added `ui_events::edit` with `EditCommandEvent` for semantic editor commands such as movement, deletion, and selection changes.
+* Added explicit text-input events for selection updates, composing regions, surrounding deletion, editor actions, and document-range conversion helpers.
+* Added explicit cursor-placement metadata for text insertion and composition updates.
+* Added `TextInputEvent` convenience constructors for common insert, replace, composition, selection, delete-surrounding, and action cases.
 
 ### Changed
 

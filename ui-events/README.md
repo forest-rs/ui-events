@@ -34,6 +34,8 @@ application development.
 - Pointer events: button down/up, move, enter/leave, scroll, gestures
 - Rich pointer state: position, pressure, tilt, contact size, modifiers
 - Keyboard types re-exported from [`keyboard-types`]
+- Text-input events for soft keyboards and IMEs
+- Edit-command events for semantic editor operations
 - A stable vocabulary you can adapt from windowing backends
 
 This crate is intentionally focused on data structures — it does not open

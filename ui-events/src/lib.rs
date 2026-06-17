@@ -13,6 +13,8 @@
 //! - Pointer events: button down/up, move, enter/leave, scroll, gestures
 //! - Rich pointer state: position, pressure, tilt, contact size, modifiers
 //! - Keyboard types re-exported from [`keyboard-types`]
+//! - Text-input events for soft keyboards and IMEs
+//! - Edit-command events for semantic editor operations
 //! - A stable vocabulary you can adapt from windowing backends
 //!
 //! This crate is intentionally focused on data structures — it does not open
@@ -121,9 +123,12 @@
 #![cfg_attr(target_pointer_width = "64", warn(clippy::trivially_copy_pass_by_ref))]
 // END LINEBENDER LINT SET
 #![no_std]
+extern crate alloc;
 
+pub mod edit;
 pub mod keyboard;
 pub mod pointer;
+pub mod text;
 
 mod scroll;
 
