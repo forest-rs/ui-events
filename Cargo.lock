@@ -1374,7 +1374,6 @@ name = "ui-events-winit"
 version = "0.3.0"
 dependencies = [
  "ui-events",
- "web-time",
  "winit",
 ]
 

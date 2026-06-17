@@ -30,6 +30,13 @@ into the [`ui-events`] model.
 
 The primary entry point is [`WindowEventReducer`].
 
+Call [`WindowEventReducer::reduce`] with nanoseconds in the host clock
+domain so input, timers, frame sampling, submission timestamps, and
+diagnostics can share one timeline.
+The timestamp must be real monotonic nanoseconds, not milliseconds,
+microseconds, frame counts, or a constant value; tap counting uses
+nanosecond-duration thresholds.
+
 [`ui-events`]: https://docs.rs/ui-events/
 
 <!-- cargo-rdme end -->

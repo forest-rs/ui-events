@@ -15,16 +15,9 @@ all-features = true
 default-target = "x86_64-unknown-linux-gnu"
 targets = []
 
-[features]
-default = ["std"]
-std = []
-
 [dependencies]
 ui-events = { workspace = true, features = ["std"] }
 winit = "0.30.10"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-web-time.workspace = true
 
 [lints]
 workspace = true
