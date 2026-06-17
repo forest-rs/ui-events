@@ -162,11 +162,13 @@ pub type ContactGeometry = PhysicalSize<f64>;
 /// A single pointer state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PointerState {
-    /// `u64` nanoseconds real time.
+    /// Monotonic nanoseconds in the event stream's clock domain.
     ///
-    /// The base time is not important, except by convention, and should
-    /// generally be the same at least for states originating from the
-    /// same device.
+    /// The epoch is intentionally unspecified: it may be the host's frame
+    /// clock, a platform monotonic clock, or an adapter-local monotonic clock.
+    /// Values are meaningful for ordering and relative timing within one event
+    /// stream, and all states in a single event, including coalesced and
+    /// predicted states, should use the same clock domain.
     pub time: u64,
     /// Position.
     pub position: PhysicalPosition<f64>,

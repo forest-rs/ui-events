@@ -6,6 +6,13 @@
 //!
 //! The primary entry point is [`WindowEventReducer`].
 //!
+//! Call [`WindowEventReducer::reduce`] with nanoseconds in the host clock
+//! domain so input, timers, frame sampling, submission timestamps, and
+//! diagnostics can share one timeline.
+//! The timestamp must be real monotonic nanoseconds, not milliseconds,
+//! microseconds, frame counts, or a constant value; tap counting uses
+//! nanosecond-duration thresholds.
+//!
 //! [`ui-events`]: https://docs.rs/ui-events/
 
 // LINEBENDER LINT SET - lib.rs - v3
@@ -24,15 +31,6 @@ pub mod pointer;
 
 extern crate alloc;
 use alloc::{vec, vec::Vec};
-
-#[cfg(not(target_arch = "wasm32"))]
-extern crate std;
-
-#[cfg(not(target_arch = "wasm32"))]
-pub use std::time::Instant;
-
-#[cfg(target_arch = "wasm32")]
-pub use web_time::Instant;
 
 use ui_events::{
     ScrollDelta,
@@ -72,8 +70,8 @@ pub struct WindowEventReducer {
     primary_state: PointerState,
     /// Click and tap counter.
     counter: TapCounter,
-    /// First time an event was received..
-    first_instant: Option<Instant>,
+    /// Last caller-provided timestamp seen by the reducer.
+    last_seen_time: Option<u64>,
 }
 
 #[allow(
@@ -82,10 +80,27 @@ pub struct WindowEventReducer {
 )]
 impl WindowEventReducer {
     /// Process a [`WindowEvent`].
+    ///
+    /// `time` is monotonic nanoseconds in the consumer's event-stream clock
+    /// domain. Every [`PointerState::time`] produced by this call uses this
+    /// value. Passing the host/frame clock here lets a host keep input events,
+    /// timers, frame samples, submission timestamps, and diagnostics on one
+    /// timeline.
+    ///
+    /// The reducer does not interpret `time` as wall-clock or epoch time; it
+    /// only preserves ordering and relative deltas within the caller's chosen
+    /// clock domain. Tap detection depends on `time` being real monotonic
+    /// nanoseconds because its timeout is measured in nanoseconds.
+    ///
+    /// Currently winit does not expose coalesced or predicted pointer samples
+    /// through this reducer. If it does in the future, each sample should keep
+    /// its own platform timestamp converted into this same clock domain rather
+    /// than collapsing the batch to one instant.
     pub fn reduce(
         &mut self,
         scale_factor: f64,
         we: &WindowEvent,
+        time: u64,
     ) -> Option<WindowEventTranslation> {
         const PRIMARY_MOUSE: PointerInfo = PointerInfo {
             pointer_id: Some(PointerId::PRIMARY),
@@ -94,10 +109,7 @@ impl WindowEventReducer {
             pointer_type: PointerType::Mouse,
         };
 
-        let time = Instant::now()
-            .duration_since(*self.first_instant.get_or_insert_with(Instant::now))
-            .as_nanos() as u64;
-
+        self.check_time_monotonic(time);
         self.primary_state.time = time;
         self.primary_state.scale_factor = scale_factor;
 
@@ -224,6 +236,7 @@ impl WindowEventReducer {
                             _ => 0.5,
                         }
                     },
+                    scale_factor,
                     ..Default::default()
                 };
 
@@ -252,6 +265,16 @@ impl WindowEventReducer {
             }
             _ => None,
         }
+    }
+
+    fn check_time_monotonic(&mut self, time: u64) {
+        if let Some(previous) = self.last_seen_time {
+            debug_assert!(
+                time >= previous,
+                "WindowEventReducer::reduce timestamps must be monotonic nanoseconds"
+            );
+        }
+        self.last_seen_time = Some(time);
     }
 }
 
@@ -428,8 +451,122 @@ impl TapCounter {
 
 #[cfg(test)]
 mod tests {
-    // CI will fail unless cargo nextest can execute at least one test per workspace.
-    // Delete this dummy test once we have an actual real test.
+    use ui_events::pointer::{PointerButton, PointerEvent};
+    use winit::dpi::PhysicalPosition;
+    use winit::event::{DeviceId, MouseButton};
+
+    use super::*;
+
+    fn device_id() -> DeviceId {
+        DeviceId::dummy()
+    }
+
+    fn cursor_moved(x: f64, y: f64) -> WindowEvent {
+        WindowEvent::CursorMoved {
+            device_id: device_id(),
+            position: PhysicalPosition::new(x, y),
+        }
+    }
+
+    fn mouse_input(state: ElementState, button: MouseButton) -> WindowEvent {
+        WindowEvent::MouseInput {
+            device_id: device_id(),
+            state,
+            button,
+        }
+    }
+
     #[test]
-    fn dummy_test_until_we_have_a_real_test() {}
+    fn reduce_uses_caller_pointer_time() {
+        let mut reducer = WindowEventReducer::default();
+
+        let event = reducer
+            .reduce(2.0, &cursor_moved(12.0, 24.0), 42)
+            .expect("cursor move should translate");
+
+        let WindowEventTranslation::Pointer(PointerEvent::Move(update)) = event else {
+            panic!("expected pointer move");
+        };
+        assert_eq!(update.current.time, 42);
+        assert_eq!(update.current.scale_factor, 2.0);
+        assert_eq!(update.current.position, PhysicalPosition::new(12.0, 24.0));
+    }
+
+    #[test]
+    fn reduce_uses_one_clock_for_tap_counting() {
+        let mut reducer = WindowEventReducer::default();
+
+        let down = reducer
+            .reduce(
+                1.0,
+                &mouse_input(ElementState::Pressed, MouseButton::Left),
+                1_000,
+            )
+            .expect("mouse down should translate");
+        let up = reducer
+            .reduce(
+                1.0,
+                &mouse_input(ElementState::Released, MouseButton::Left),
+                2_000,
+            )
+            .expect("mouse up should translate");
+        let second_down = reducer
+            .reduce(
+                1.0,
+                &mouse_input(ElementState::Pressed, MouseButton::Left),
+                3_000,
+            )
+            .expect("second mouse down should translate");
+
+        let WindowEventTranslation::Pointer(PointerEvent::Down(first)) = down else {
+            panic!("expected first pointer down");
+        };
+        let WindowEventTranslation::Pointer(PointerEvent::Up(up)) = up else {
+            panic!("expected pointer up");
+        };
+        let WindowEventTranslation::Pointer(PointerEvent::Down(second)) = second_down else {
+            panic!("expected second pointer down");
+        };
+
+        assert_eq!(first.state.time, 1_000);
+        assert_eq!(first.state.count, 1);
+        assert_eq!(up.state.time, 2_000);
+        assert_eq!(up.state.count, 1);
+        assert_eq!(second.state.time, 3_000);
+        assert_eq!(second.state.count, 2);
+        assert!(second.state.buttons.contains(PointerButton::Primary));
+    }
+
+    #[test]
+    #[should_panic(expected = "timestamps must be monotonic nanoseconds")]
+    fn reduce_debug_asserts_non_monotonic_time() {
+        let mut reducer = WindowEventReducer::default();
+
+        let _ = reducer.reduce(1.0, &cursor_moved(1.0, 1.0), 2_000);
+        let _ = reducer.reduce(1.0, &cursor_moved(2.0, 2.0), 1_000);
+    }
+
+    #[test]
+    fn reduce_stamps_touch_state() {
+        let mut reducer = WindowEventReducer::default();
+        let touch = WindowEvent::Touch(Touch {
+            device_id: device_id(),
+            phase: TouchPhase::Started,
+            location: PhysicalPosition::new(3.0, 4.0),
+            force: Some(Force::Normalized(0.75)),
+            id: 7,
+        });
+
+        let event = reducer
+            .reduce(1.5, &touch, 99)
+            .expect("touch should translate");
+
+        let WindowEventTranslation::Pointer(PointerEvent::Down(down)) = event else {
+            panic!("expected touch down");
+        };
+        assert_eq!(down.state.time, 99);
+        assert_eq!(down.state.scale_factor, 1.5);
+        assert_eq!(down.state.position, PhysicalPosition::new(3.0, 4.0));
+        assert_eq!(down.state.pressure, 0.75);
+    }
 }

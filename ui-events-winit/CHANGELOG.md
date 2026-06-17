@@ -15,6 +15,18 @@ You can find its changes [documented below](#030-2026-01-18).
 
 This release has an [MSRV][] of 1.85.
 
+### Changed
+
+* Changed `WindowEventReducer::reduce` to require a caller-provided monotonic nanosecond timestamp. Hosts should pass their frame/timer clock timestamp so pointer events are emitted in the same clock domain as frame sampling and timers.
+
+### Removed
+
+* Removed the `ui_events_winit::Instant` re-export and the inert `std` feature. `ui-events-winit` no longer owns a reducer-local clock.
+
+### Fixed
+
+* Touch pointer states now preserve the reducer `scale_factor` instead of always reporting `1.0`.
+
 ## [0.3.0][] - 2026-01-18
 
 This release has an [MSRV][] of 1.85.

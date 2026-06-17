@@ -85,4 +85,3 @@ ui-events-apple-common = { version = "0.3.0", path = "ui-events-apple-common", d
 ui-events-appkit = { version = "0.3.0", path = "ui-events-appkit" }
 ui-events-uikit = { version = "0.3.0", path = "ui-events-uikit" }
 ui-events-web = { version = "0.3.0", path = "ui-events-web" }
-web-time = "1.1.0"
