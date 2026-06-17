@@ -24,6 +24,9 @@ ui-events = { workspace = true, default-features = false }
 dpi.workspace = true
 js-sys = { version = "0.3.82", default-features = false }
 web-sys = { version = "0.3.82", default-features = false, features = [
+    "CompositionEvent",
+    "Event",
+    "InputEvent",
     "KeyboardEvent",
     "MouseEvent",
     "Touch",
@@ -39,8 +42,10 @@ workspace = true
 
 [dev-dependencies]
 web-sys = { version = "0.3.82", features = [
+    "CompositionEvent",
     "DomRect",
     "Element",
+    "InputEvent",
     "KeyboardEvent",
     "PointerEvent",
     "Window",
