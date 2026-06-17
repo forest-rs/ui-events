@@ -1,7 +1,7 @@
 // Copyright 2025 the UI Events Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! This crate bridges [`winit`]'s native input events (mouse, touch, keyboard, etc.)
+//! This crate bridges [`winit`]'s native input events (mouse, touch, keyboard, IME, etc.)
 //! into the [`ui-events`] model.
 //!
 //! The primary entry point is [`WindowEventReducer`].
@@ -28,6 +28,7 @@
 
 pub mod keyboard;
 pub mod pointer;
+pub mod text;
 
 extern crate alloc;
 use alloc::{vec, vec::Vec};
@@ -39,9 +40,10 @@ use ui_events::{
         PointerButtonEvent, PointerEvent, PointerGesture, PointerGestureEvent, PointerId,
         PointerInfo, PointerScrollEvent, PointerState, PointerType, PointerUpdate,
     },
+    text::TextInputEvent,
 };
 use winit::{
-    event::{ElementState, Force, MouseScrollDelta, Touch, TouchPhase, WindowEvent},
+    event::{ElementState, Force, Ime, MouseScrollDelta, Touch, TouchPhase, WindowEvent},
     keyboard::ModifiersState,
 };
 
@@ -49,11 +51,13 @@ use winit::{
 ///
 /// Store a single instance of this per window, then call [`WindowEventReducer::reduce`]
 /// on each [`WindowEvent`] for that window.
-/// Use the [`WindowEventTranslation`] value to receive [`PointerEvent`]s and [`KeyboardEvent`]s.
+/// Use the [`WindowEventTranslation`] value to receive [`PointerEvent`],
+/// [`KeyboardEvent`], and text-input event batches.
 ///
 /// This handles:
 ///  - [`ModifiersChanged`][`WindowEvent::ModifiersChanged`]
 ///  - [`KeyboardInput`][`WindowEvent::KeyboardInput`]
+///  - [`Ime`][`WindowEvent::Ime`]
 ///  - [`Touch`][`WindowEvent::Touch`]
 ///  - [`MouseInput`][`WindowEvent::MouseInput`]
 ///  - [`MouseWheel`][`WindowEvent::MouseWheel`]
@@ -70,6 +74,8 @@ pub struct WindowEventReducer {
     primary_state: PointerState,
     /// Click and tap counter.
     counter: TapCounter,
+    /// Whether the window currently has a non-empty IME composition.
+    ime_composing: bool,
     /// Last caller-provided timestamp seen by the reducer.
     last_seen_time: Option<u64>,
 }
@@ -122,6 +128,21 @@ impl WindowEventReducer {
             WindowEvent::KeyboardInput { event, .. } => Some(WindowEventTranslation::Keyboard(
                 keyboard::from_winit_keyboard_event(event.clone(), self.modifiers),
             )),
+            WindowEvent::Ime(Ime::Enabled) => None,
+            WindowEvent::Ime(Ime::Disabled) => self.end_ime_composition(),
+            WindowEvent::Ime(Ime::Preedit(text, _)) if text.is_empty() => {
+                self.end_ime_composition()
+            }
+            WindowEvent::Ime(ime) => {
+                let was_composing = self.ime_composing;
+                self.ime_composing = matches!(ime, Ime::Preedit(text, _) if !text.is_empty());
+                text::from_winit_ime(ime).map(|mut events| {
+                    if was_composing && matches!(ime, Ime::Commit(_)) {
+                        events.insert(0, TextInputEvent::CompositionEnd);
+                    }
+                    WindowEventTranslation::Text(events)
+                })
+            }
             WindowEvent::CursorEntered { .. } => Some(WindowEventTranslation::Pointer(
                 PointerEvent::Enter(PRIMARY_MOUSE),
             )),
@@ -267,6 +288,17 @@ impl WindowEventReducer {
         }
     }
 
+    fn end_ime_composition(&mut self) -> Option<WindowEventTranslation> {
+        if self.ime_composing {
+            self.ime_composing = false;
+            Some(WindowEventTranslation::Text(vec![
+                TextInputEvent::CompositionEnd,
+            ]))
+        } else {
+            None
+        }
+    }
+
     fn check_time_monotonic(&mut self, time: u64) {
         if let Some(previous) = self.last_seen_time {
             debug_assert!(
@@ -285,6 +317,13 @@ pub enum WindowEventTranslation {
     Keyboard(KeyboardEvent),
     /// Resulting [`PointerEvent`].
     Pointer(PointerEvent),
+    /// Resulting [`TextInputEvent`] values.
+    ///
+    /// This is a batch because one platform event can map to more than one
+    /// normalized text event. For example, committing an active IME
+    /// composition emits [`TextInputEvent::CompositionEnd`] followed by the
+    /// committed [`TextInputEvent::Insert`].
+    Text(Vec<TextInputEvent>),
 }
 
 #[derive(Clone, Debug)]
@@ -456,6 +495,76 @@ mod tests {
     use winit::event::{DeviceId, MouseButton};
 
     use super::*;
+
+    #[test]
+    fn ime_commit_maps_to_text_insert() {
+        let mut reducer = WindowEventReducer::default();
+        assert!(matches!(
+            reducer.reduce(1.0, &WindowEvent::Ime(Ime::Commit("é".into())), 1),
+            Some(WindowEventTranslation::Text(events))
+                if matches!(events.as_slice(), [TextInputEvent::Insert(text)] if text.text == "é")
+        ));
+    }
+
+    #[test]
+    fn ime_commit_ends_active_composition_before_insert() {
+        let mut reducer = WindowEventReducer::default();
+        reducer.reduce(
+            1.0,
+            &WindowEvent::Ime(Ime::Preedit("ni".into(), Some((2, 2)))),
+            1,
+        );
+        assert!(matches!(
+            reducer.reduce(1.0, &WindowEvent::Ime(Ime::Commit("に".into())), 2),
+            Some(WindowEventTranslation::Text(events))
+                if matches!(
+                    events.as_slice(),
+                    [
+                        TextInputEvent::CompositionEnd,
+                        TextInputEvent::Insert(text),
+                    ] if text.text == "に"
+                )
+        ));
+    }
+
+    #[test]
+    fn ime_preedit_maps_to_composition_update() {
+        let mut reducer = WindowEventReducer::default();
+        assert!(matches!(
+            reducer.reduce(
+                1.0,
+                &WindowEvent::Ime(Ime::Preedit("ni".into(), Some((2, 2)))),
+                1,
+            ),
+            Some(WindowEventTranslation::Text(events))
+                if matches!(
+                    events.as_slice(),
+                    [TextInputEvent::CompositionUpdate(state)]
+                        if state.text == "ni"
+                            && state.selection == Some(ui_events::text::TextRange::new(2, 2))
+                )
+        ));
+    }
+
+    #[test]
+    fn ime_disabled_ends_active_composition_once() {
+        let mut reducer = WindowEventReducer::default();
+        reducer.reduce(
+            1.0,
+            &WindowEvent::Ime(Ime::Preedit("ni".into(), Some((2, 2)))),
+            1,
+        );
+        assert!(matches!(
+            reducer.reduce(1.0, &WindowEvent::Ime(Ime::Disabled), 2),
+            Some(WindowEventTranslation::Text(events))
+                if matches!(events.as_slice(), [TextInputEvent::CompositionEnd])
+        ));
+        assert!(
+            reducer
+                .reduce(1.0, &WindowEvent::Ime(Ime::Disabled), 3)
+                .is_none()
+        );
+    }
 
     fn device_id() -> DeviceId {
         DeviceId::dummy()

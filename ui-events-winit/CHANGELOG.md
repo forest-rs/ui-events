@@ -19,6 +19,10 @@ This release has an [MSRV][] of 1.85.
 
 * Changed `WindowEventReducer::reduce` to require a caller-provided monotonic nanosecond timestamp. Hosts should pass their frame/timer clock timestamp so pointer events are emitted in the same clock domain as frame sampling and timers.
 
+### Added
+
+* Added `WindowEvent::Ime` translation to `ui_events::text::TextInputEvent`.
+
 ### Removed
 
 * Removed the `ui_events_winit::Instant` re-export and the inert `std` feature. `ui-events-winit` no longer owns a reducer-local clock.

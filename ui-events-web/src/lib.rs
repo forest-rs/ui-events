@@ -6,12 +6,17 @@
 //!
 //! It provides lightweight helpers to convert browser events into portable
 //! `ui-events` types you can feed into your input handling. It supports
-//! Pointer Events (mouse, touch, pen) and keyboard.
+//! Pointer Events (mouse, touch, pen), keyboard, and text/composition input.
 //!
 //! ## Keyboard
 //!
 //! - [`keyboard::from_web_keyboard_event`]
 //! - Optional helpers: [`keyboard::from_web_keydown_event`], [`keyboard::from_web_keyup_event`]
+//!
+//! ## Text / Composition
+//!
+//! - [`text::text_event_from_dom_event`]
+//! - Typed helpers: [`text::from_web_input_event`], [`text::from_web_composition_event`]
 //!
 //! ## Pointer (Pointer Events)
 //!
@@ -59,6 +64,11 @@
 //!   - Stylus rotation/twist (Pointer Events `twist`) is not currently exposed by `ui-events`,
 //!     so it is not mapped.
 //! - Keyboard: unknown `key`/`code` map to `Unidentified`; `is_composing` reflects the DOM flag.
+//! - Text:
+//!   - `CompositionEvent` maps to composition update/end.
+//!   - `InputEvent` maps committed insertions and simple backward/forward deletion intents.
+//!   - DOM target ranges are node-relative and are not currently converted into `ui-events`
+//!     replacement ranges.
 //!
 //! ## Example
 //!
@@ -112,3 +122,4 @@ extern crate alloc;
 
 pub mod keyboard;
 pub mod pointer;
+pub mod text;
