@@ -19,7 +19,9 @@
 use dpi::PhysicalPosition;
 use ui_events::ScrollDelta;
 use ui_events::keyboard::Modifiers;
-use ui_events::pointer::{PointerButton, PointerId, PointerInfo, PointerType};
+use ui_events::pointer::{
+    ContactGeometry, PointerButton, PointerId, PointerInfo, PointerOrientation, PointerType,
+};
 
 // evdev pointer button codes from `linux/input-event-codes.h`.
 const BTN_LEFT: u32 = 0x110;
@@ -224,6 +226,69 @@ pub fn modifiers_from_bools(ctrl: bool, alt: bool, shift: bool, meta: bool) -> M
     m
 }
 
+/// Build a [`PointerInfo`] for a touch contact, reserving [`PointerId::PRIMARY`]
+/// for the primary contact.
+///
+/// `wl_touch` identifies each contact with a small non-negative integer that is
+/// unique among the contacts currently down. The contact whose id equals
+/// `primary_id` — conventionally the lowest active id, mirroring the primary
+/// pointer in the web backend — is mapped to [`PointerId::PRIMARY`]. Every other
+/// contact is offset through [`pointer_info_from_platform_id`] so it cannot
+/// collide with the reserved primary id.
+pub fn touch_pointer_info(id: u64, primary_id: u64) -> PointerInfo {
+    if id == primary_id {
+        primary_pointer_info(PointerType::Touch)
+    } else {
+        pointer_info_from_platform_id(PointerType::Touch, id)
+    }
+}
+
+/// Convert a `wl_touch` contact ellipse into a [`ContactGeometry`].
+///
+/// `wl_touch::shape` reports the lengths of the major and minor axes of the
+/// ellipse approximating the contact, in surface-local (logical) coordinates.
+/// Wayland aligns the major axis with the surface y-axis at the zero
+/// orientation, so the major-axis length becomes the geometry's `height` and the
+/// minor-axis length its `width`; the major-axis direction is reported
+/// separately as the azimuth of [`touch_orientation_from_degrees`]. Both lengths
+/// are multiplied by `scale_factor` to produce physical pixels.
+///
+/// A non-positive or non-finite axis length or `scale_factor` falls back to a
+/// single physical pixel, matching the [`ContactGeometry`] default.
+pub fn contact_geometry_from_shape(major: f64, minor: f64, scale_factor: f64) -> ContactGeometry {
+    let scale_factor = positive_finite_or(scale_factor, 1.0);
+    ContactGeometry {
+        width: positive_finite_or(minor * scale_factor, 1.0),
+        height: positive_finite_or(major * scale_factor, 1.0),
+    }
+}
+
+/// Convert a `wl_touch` contact orientation into a [`PointerOrientation`].
+///
+/// `wl_touch::orientation` reports the clockwise angle, in degrees, between the
+/// contact ellipse's major axis and the positive surface y-axis. A touch contact
+/// lies flat against the surface, so the altitude is always perpendicular
+/// (`π/2`); the angle is folded into the azimuth, which is `0` along the positive
+/// x-axis and `π/2` along the positive y-axis. An orientation of `0°` therefore
+/// yields the default [`PointerOrientation`].
+///
+/// A non-finite angle falls back to the default orientation.
+pub fn touch_orientation_from_degrees(orientation_deg: f64) -> PointerOrientation {
+    if !orientation_deg.is_finite() {
+        return PointerOrientation::default();
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "Wayland reports orientation as f64 degrees; ui-events stores azimuth as f32"
+    )]
+    let azimuth = (core::f32::consts::FRAC_PI_2 + (orientation_deg as f32).to_radians())
+        .rem_euclid(core::f32::consts::TAU);
+    PointerOrientation {
+        altitude: core::f32::consts::FRAC_PI_2,
+        azimuth,
+    }
+}
+
 #[inline]
 fn finite_or(value: f64, fallback: f64) -> f64 {
     if value.is_finite() { value } else { fallback }
@@ -390,5 +455,56 @@ mod tests {
         assert!(!mods.alt());
         assert!(mods.shift());
         assert!(!mods.meta());
+    }
+
+    #[test]
+    fn touch_primary_contact_is_primary_pointer() {
+        let info = touch_pointer_info(3, 3);
+        assert!(info.is_primary_pointer());
+        assert_eq!(info.pointer_type, PointerType::Touch);
+    }
+
+    #[test]
+    fn touch_non_primary_contact_is_offset() {
+        let info = touch_pointer_info(3, 1);
+        assert!(!info.is_primary_pointer());
+        assert_eq!(info.pointer_type, PointerType::Touch);
+        assert_eq!(info.pointer_id, PointerId::new(3 + POINTER_ID_OFFSET));
+    }
+
+    #[test]
+    fn shape_maps_minor_to_width_and_major_to_height_scaled() {
+        let geometry = contact_geometry_from_shape(10.0, 4.0, 2.0);
+        assert_eq!(geometry.width, 8.0);
+        assert_eq!(geometry.height, 20.0);
+    }
+
+    #[test]
+    fn shape_sanitizes_degenerate_axes() {
+        let geometry = contact_geometry_from_shape(0.0, f64::NAN, 1.0);
+        assert_eq!(geometry.width, 1.0);
+        assert_eq!(geometry.height, 1.0);
+    }
+
+    #[test]
+    fn orientation_zero_degrees_is_default() {
+        let orientation = touch_orientation_from_degrees(0.0);
+        assert_eq!(orientation.altitude, core::f32::consts::FRAC_PI_2);
+        assert!((orientation.azimuth - core::f32::consts::FRAC_PI_2).abs() < 1e-6);
+    }
+
+    #[test]
+    fn orientation_rotates_azimuth_clockwise_from_y_axis() {
+        // 90° clockwise from the +y axis puts the major axis along azimuth π.
+        let orientation = touch_orientation_from_degrees(90.0);
+        assert!((orientation.azimuth - core::f32::consts::PI).abs() < 1e-5);
+    }
+
+    #[test]
+    fn orientation_non_finite_is_default() {
+        assert_eq!(
+            touch_orientation_from_degrees(f64::INFINITY),
+            PointerOrientation::default()
+        );
     }
 }

@@ -317,14 +317,16 @@ struct TapState {
     y: f64,
 }
 
+/// Tracks multi-click and multi-tap `count` by watching the [`PointerEvent`]s a
+/// reducer emits. Shared by the pointer and touch reducers.
 #[derive(Debug, Default)]
-struct TapCounter {
+pub(crate) struct TapCounter {
     taps: Vec<TapState>,
 }
 
 impl TapCounter {
     /// Enhance a [`PointerEvent`] with a `count`.
-    fn attach_count(&mut self, scale_factor: f64, e: PointerEvent) -> PointerEvent {
+    pub(crate) fn attach_count(&mut self, scale_factor: f64, e: PointerEvent) -> PointerEvent {
         match e {
             PointerEvent::Down(mut event) => {
                 let pointer_id = event.pointer.pointer_id;
