@@ -32,6 +32,10 @@ const BTN_EXTRA: u32 = 0x114;
 const BTN_FORWARD: u32 = 0x115;
 const BTN_BACK: u32 = 0x116;
 const BTN_TASK: u32 = 0x117;
+// evdev tablet-tool button codes from `linux/input-event-codes.h`.
+const BTN_STYLUS3: u32 = 0x149;
+const BTN_STYLUS: u32 = 0x14b;
+const BTN_STYLUS2: u32 = 0x14c;
 
 /// Map an evdev pointer button code to a [`PointerButton`].
 ///
@@ -63,6 +67,31 @@ pub fn pointer_button_from_evdev(code: u32) -> Option<PointerButton> {
         BTN_TASK => PointerButton::B9,
         _ => return None,
     })
+}
+
+/// Map an evdev tablet-tool button code to a [`PointerButton`].
+///
+/// `zwp_tablet_tool_v2` reports stylus barrel buttons by their
+/// `linux/input-event-codes.h` `BTN_STYLUS*` codes:
+///
+/// - `BTN_STYLUS` → [`PointerButton::Secondary`], which `ui-events` documents as
+///   the pen barrel button.
+/// - `BTN_STYLUS2` → [`PointerButton::B7`]
+/// - `BTN_STYLUS3` → [`PointerButton::B8`]
+///
+/// The second and third barrel buttons have no dedicated `ui-events` button, so
+/// they map into the generic `B7`/`B8` range rather than being conflated with
+/// the mouse side or auxiliary buttons, mirroring how
+/// [`pointer_button_from_evdev`] treats `BTN_FORWARD`/`BTN_BACK`/`BTN_TASK`. Any
+/// other code defers to [`pointer_button_from_evdev`], so a tablet tool used as a
+/// puck (the mouse and lens tool types) reuses the pointer-button table.
+pub fn pen_button_from_evdev(code: u32) -> Option<PointerButton> {
+    match code {
+        BTN_STYLUS => Some(PointerButton::Secondary),
+        BTN_STYLUS2 => Some(PointerButton::B7),
+        BTN_STYLUS3 => Some(PointerButton::B8),
+        other => pointer_button_from_evdev(other),
+    }
 }
 
 /// Convert Wayland surface-local logical coordinates to physical pixels.
@@ -336,6 +365,132 @@ pub fn rotation_radians_from_degrees(degrees: f64) -> f32 {
     finite_or(degrees, 0.0).to_radians() as f32
 }
 
+/// The physical type of a tablet tool, as reported by `zwp_tablet_tool_v2`.
+///
+/// This mirrors the protocol's `zwp_tablet_tool_v2::type` enum as plain values so
+/// this module needs no `wayland-protocols` dependency; the tablet reducer
+/// translates the protocol enum into this type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolType {
+    /// A pen.
+    Pen,
+    /// An eraser, conventionally the opposite end of a pen.
+    Eraser,
+    /// A brush.
+    Brush,
+    /// A pencil.
+    Pencil,
+    /// An airbrush.
+    Airbrush,
+    /// A finger on a touch-capable tablet.
+    Finger,
+    /// A mouse-shaped tool bound to the tablet surface (a puck).
+    Mouse,
+    /// A mouse-shaped tool with a focusing lens.
+    Lens,
+}
+
+/// Map a tablet [`ToolType`] to the [`PointerType`] it reports as.
+///
+/// The pen-like drawing tools — pen, eraser, brush, pencil, and airbrush — report
+/// as [`PointerType::Pen`]; the puck-style mouse and lens tools as
+/// [`PointerType::Mouse`]; and the finger tool as [`PointerType::Touch`].
+pub fn pointer_type_from_tool(tool: ToolType) -> PointerType {
+    match tool {
+        ToolType::Pen
+        | ToolType::Eraser
+        | ToolType::Brush
+        | ToolType::Pencil
+        | ToolType::Airbrush => PointerType::Pen,
+        ToolType::Mouse | ToolType::Lens => PointerType::Mouse,
+        ToolType::Finger => PointerType::Touch,
+    }
+}
+
+/// The [`PointerButton`] a tablet tool's tip contact maps to.
+///
+/// A [`ToolType::Eraser`] tip maps to [`PointerButton::PenEraser`], matching the
+/// W3C Pointer Events eraser button; every other tool's tip maps to
+/// [`PointerButton::Primary`], the pen-contact / primary button.
+pub fn tip_button_from_tool(tool: ToolType) -> PointerButton {
+    match tool {
+        ToolType::Eraser => PointerButton::PenEraser,
+        _ => PointerButton::Primary,
+    }
+}
+
+/// The maximum value of a tablet tool's normalized axes (`pressure`, `distance`,
+/// and `slider`), per `zwp_tablet_tool_v2`.
+const TABLET_AXIS_NORMAL_MAX: f32 = 65535.0;
+
+/// Convert a `zwp_tablet_tool_v2::pressure` value into a normalized pressure.
+///
+/// Wayland reports tool pressure as an integer normalized to `[0, 65535]`. This
+/// divides by that maximum to produce the `[0, 1]` pressure
+/// [`PointerState`] expects, clamping to guard against out-of-range values.
+///
+/// [`PointerState`]: ui_events::pointer::PointerState
+pub fn pressure_from_normalized(value: u32) -> f32 {
+    (value as f32 / TABLET_AXIS_NORMAL_MAX).clamp(0.0, 1.0)
+}
+
+/// Convert a `zwp_tablet_tool_v2::slider` position into a tangential pressure.
+///
+/// Wayland reports the slider as a signed integer normalized to
+/// `[-65535, 65535]`. This divides by `65535` to produce the `[-1, 1]`
+/// tangential pressure [`PointerState`] expects, clamping to guard against
+/// out-of-range values. A tool slider is one of the controls
+/// [`PointerState::tangential_pressure`] is intended to carry.
+///
+/// [`PointerState`]: ui_events::pointer::PointerState
+/// [`PointerState::tangential_pressure`]: ui_events::pointer::PointerState::tangential_pressure
+pub fn tangential_pressure_from_slider(position: i32) -> f32 {
+    (position as f32 / TABLET_AXIS_NORMAL_MAX).clamp(-1.0, 1.0)
+}
+
+/// The tilt magnitude, in degrees, at which the pen is treated as parallel to the
+/// surface, kept just below `90°` so `tan` stays finite.
+const MAX_TILT_DEGREES: f32 = 89.9;
+
+/// Convert `zwp_tablet_tool_v2::tilt` angles into a [`PointerOrientation`].
+///
+/// Wayland reports the tilt as two angles in degrees: `tilt_x` is the deflection
+/// of the tool away from the surface normal toward the positive surface x-axis,
+/// and `tilt_y` toward the positive y-axis, each nominally in `[-90, 90]`. This
+/// matches the W3C Pointer Events `tiltX`/`tiltY` model, so the conversion mirrors
+/// the web backend: the pen axis is modelled as the vector `(tan(tilt_x),
+/// tan(tilt_y), 1)`, whose spherical altitude and azimuth become the
+/// orientation. A zero tilt yields the perpendicular default orientation.
+///
+/// The angles are clamped to just under `90°` so the tangents stay finite, and a
+/// non-finite angle is treated as `0`.
+pub fn pointer_orientation_from_tilt_degrees(
+    tilt_x_deg: f64,
+    tilt_y_deg: f64,
+) -> PointerOrientation {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "Wayland reports tilt as f64 degrees; ui-events stores orientation as f32"
+    )]
+    let (tilt_x, tilt_y) = (
+        (finite_or(tilt_x_deg, 0.0) as f32).clamp(-MAX_TILT_DEGREES, MAX_TILT_DEGREES),
+        (finite_or(tilt_y_deg, 0.0) as f32).clamp(-MAX_TILT_DEGREES, MAX_TILT_DEGREES),
+    );
+    let x = tilt_x.to_radians().tan();
+    let y = tilt_y.to_radians().tan();
+
+    // The pen axis is the normalized vector (x, y, 1); its z component is the
+    // sine of the altitude, and its projection onto the surface gives the azimuth.
+    let z = 1.0 / (x.mul_add(x, y * y) + 1.0).sqrt();
+    let altitude = z.asin();
+    let azimuth = if x == 0.0 && y == 0.0 {
+        core::f32::consts::FRAC_PI_2
+    } else {
+        y.atan2(x)
+    };
+    PointerOrientation { altitude, azimuth }
+}
+
 #[inline]
 fn finite_or(value: f64, fallback: f64) -> f64 {
     if value.is_finite() { value } else { fallback }
@@ -590,5 +745,101 @@ mod tests {
     #[test]
     fn rotation_non_finite_is_zero() {
         assert_eq!(rotation_radians_from_degrees(f64::INFINITY), 0.0);
+    }
+
+    #[test]
+    fn pen_buttons_map_barrel_and_defer_to_pointer_table() {
+        // The primary barrel button is the documented pen "Secondary" button.
+        assert_eq!(
+            pen_button_from_evdev(BTN_STYLUS),
+            Some(PointerButton::Secondary)
+        );
+        // Extra barrel buttons fall into the generic range.
+        assert_eq!(pen_button_from_evdev(BTN_STYLUS2), Some(PointerButton::B7));
+        assert_eq!(pen_button_from_evdev(BTN_STYLUS3), Some(PointerButton::B8));
+        // A puck tool's mouse buttons defer to the pointer-button table.
+        assert_eq!(
+            pen_button_from_evdev(BTN_LEFT),
+            Some(PointerButton::Primary)
+        );
+        // `BTN_TOUCH` (0x14a) sits between the stylus codes and maps to nothing.
+        assert_eq!(pen_button_from_evdev(0x14a), None);
+    }
+
+    #[test]
+    fn tool_types_map_to_expected_pointer_types() {
+        assert_eq!(pointer_type_from_tool(ToolType::Pen), PointerType::Pen);
+        assert_eq!(pointer_type_from_tool(ToolType::Eraser), PointerType::Pen);
+        assert_eq!(pointer_type_from_tool(ToolType::Airbrush), PointerType::Pen);
+        assert_eq!(pointer_type_from_tool(ToolType::Mouse), PointerType::Mouse);
+        assert_eq!(pointer_type_from_tool(ToolType::Lens), PointerType::Mouse);
+        assert_eq!(pointer_type_from_tool(ToolType::Finger), PointerType::Touch);
+    }
+
+    #[test]
+    fn eraser_tip_is_pen_eraser_others_are_primary() {
+        assert_eq!(
+            tip_button_from_tool(ToolType::Eraser),
+            PointerButton::PenEraser
+        );
+        assert_eq!(tip_button_from_tool(ToolType::Pen), PointerButton::Primary);
+        assert_eq!(
+            tip_button_from_tool(ToolType::Mouse),
+            PointerButton::Primary
+        );
+    }
+
+    #[test]
+    fn pressure_normalizes_and_clamps() {
+        assert_eq!(pressure_from_normalized(0), 0.0);
+        assert_eq!(pressure_from_normalized(65535), 1.0);
+        assert!((pressure_from_normalized(32768) - 0.5).abs() < 1e-4);
+        // Out-of-range values clamp into [0, 1].
+        assert_eq!(pressure_from_normalized(u32::MAX), 1.0);
+    }
+
+    #[test]
+    fn slider_normalizes_signed_and_clamps() {
+        assert_eq!(tangential_pressure_from_slider(0), 0.0);
+        assert_eq!(tangential_pressure_from_slider(65535), 1.0);
+        assert_eq!(tangential_pressure_from_slider(-65535), -1.0);
+        assert!((tangential_pressure_from_slider(32768) - 0.5).abs() < 1e-4);
+        // Out-of-range values clamp into [-1, 1].
+        assert_eq!(tangential_pressure_from_slider(i32::MIN), -1.0);
+    }
+
+    #[test]
+    fn zero_tilt_is_perpendicular() {
+        let orientation = pointer_orientation_from_tilt_degrees(0.0, 0.0);
+        assert!((orientation.altitude - core::f32::consts::FRAC_PI_2).abs() < 1e-5);
+        assert!((orientation.azimuth - core::f32::consts::FRAC_PI_2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn tilt_axes_map_to_expected_azimuths() {
+        // Tilt toward +x points the azimuth along the x-axis (0).
+        let toward_x = pointer_orientation_from_tilt_degrees(30.0, 0.0);
+        assert!(toward_x.azimuth.abs() < 1e-5);
+        // Tilt toward +y points the azimuth along the y-axis (π/2).
+        let toward_y = pointer_orientation_from_tilt_degrees(0.0, 30.0);
+        assert!((toward_y.azimuth - core::f32::consts::FRAC_PI_2).abs() < 1e-5);
+        // More tilt lowers the altitude toward the surface.
+        assert!(toward_x.altitude < core::f32::consts::FRAC_PI_2);
+    }
+
+    #[test]
+    fn extreme_tilt_stays_finite() {
+        // Beyond the clamp the tangents would diverge; the result must stay finite.
+        let orientation = pointer_orientation_from_tilt_degrees(120.0, -120.0);
+        assert!(orientation.altitude.is_finite());
+        assert!(orientation.azimuth.is_finite());
+        assert!(orientation.altitude < 0.01);
+    }
+
+    #[test]
+    fn non_finite_tilt_is_perpendicular() {
+        let orientation = pointer_orientation_from_tilt_degrees(f64::NAN, f64::INFINITY);
+        assert!((orientation.altitude - core::f32::consts::FRAC_PI_2).abs() < 1e-5);
+        assert!((orientation.azimuth - core::f32::consts::FRAC_PI_2).abs() < 1e-5);
     }
 }

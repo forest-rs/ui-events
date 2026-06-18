@@ -54,4 +54,7 @@ pub mod gesture;
 pub mod pointer;
 
 #[cfg(target_os = "linux")]
+pub mod tablet;
+
+#[cfg(target_os = "linux")]
 pub mod touch;
