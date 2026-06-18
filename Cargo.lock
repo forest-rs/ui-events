@@ -1360,6 +1360,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui-events-wayland"
+version = "0.3.0"
+dependencies = [
+ "dpi",
+ "ui-events",
+]
+
+[[package]]
 name = "ui-events-web"
 version = "0.3.0"
 dependencies = [
