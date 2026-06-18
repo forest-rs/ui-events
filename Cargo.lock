@@ -1365,6 +1365,7 @@ version = "0.3.0"
 dependencies = [
  "dpi",
  "ui-events",
+ "wayland-client",
 ]
 
 [[package]]

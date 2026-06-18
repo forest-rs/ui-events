@@ -20,6 +20,9 @@ This release has an [MSRV][] of 1.85.
   evdev pointer-button mapping, surface-local coordinate scaling, scroll-axis
   frame to `ScrollDelta` conversion, pointer identity helpers, and modifier
   helpers.
+- `pointer::PointerEventReducer`, which reduces a `wl_pointer` event stream into
+  `PointerEvent`s, accumulating frame-batched scroll axes, tracking button and
+  click-count state, and stamping a caller-provided monotonic timestamp.
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
 

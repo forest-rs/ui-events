@@ -46,3 +46,6 @@
 // END LINEBENDER LINT SET
 
 pub mod mapping;
+
+#[cfg(target_os = "linux")]
+pub mod pointer;

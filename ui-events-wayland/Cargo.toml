@@ -19,5 +19,8 @@ targets = []
 ui-events = { workspace = true, features = ["std"] }
 dpi.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+wayland-client = "0.31"
+
 [lints]
 workspace = true
