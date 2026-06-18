@@ -1366,6 +1366,7 @@ dependencies = [
  "dpi",
  "ui-events",
  "wayland-client",
+ "wayland-protocols",
 ]
 
 [[package]]

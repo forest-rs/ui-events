@@ -289,6 +289,53 @@ pub fn touch_orientation_from_degrees(orientation_deg: f64) -> PointerOrientatio
     }
 }
 
+/// Convert a `zwp_pointer_gesture_pinch_v1` absolute pinch scale into the
+/// signed, per-update scale fraction carried by [`PointerGesture::Pinch`].
+///
+/// Wayland reports the pinch `scale` as an absolute ratio relative to the
+/// gesture's `begin` event, which is implicitly `1.0` — a `scale` of `2.0` means
+/// the fingers are twice as far apart as they were at `begin`.
+/// [`PointerGesture::Pinch`] instead carries the signed fractional change for a
+/// single update, where `0.1` means "grow by 10%" and the update rule is
+/// `new_scale = current_scale * (1.0 + delta)`. Given the absolute scale from
+/// the previous update (or `1.0` at the start of the gesture) as `previous` and
+/// the absolute scale from the current update as `current`, this returns
+/// `current / previous - 1.0`.
+///
+/// A non-finite or non-positive `previous` falls back to `1.0`, and a
+/// non-finite or non-positive `current` is treated as unchanged from `previous`,
+/// yielding `0.0`.
+///
+/// [`PointerGesture::Pinch`]: ui_events::pointer::PointerGesture::Pinch
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Wayland reports scale as f64; ui-events stores the pinch fraction as f32"
+)]
+pub fn pinch_scale_fraction(previous: f64, current: f64) -> f32 {
+    let previous = positive_finite_or(previous, 1.0);
+    let current = positive_finite_or(current, previous);
+    (current / previous - 1.0) as f32
+}
+
+/// Convert a `zwp_pointer_gesture_pinch_v1` rotation into the clockwise radians
+/// carried by [`PointerGesture::Rotate`].
+///
+/// Wayland reports the pinch `rotation` as an angle in degrees, measured
+/// clockwise, accumulated since the previous `begin` or `update` event — already
+/// a per-update delta. [`PointerGesture::Rotate`] is likewise a clockwise,
+/// per-update delta, but measured in radians, so this is a plain
+/// degrees-to-radians conversion that preserves the sign. A non-finite angle
+/// yields `0.0`.
+///
+/// [`PointerGesture::Rotate`]: ui_events::pointer::PointerGesture::Rotate
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "Wayland reports rotation as f64 degrees; ui-events stores the angle as f32"
+)]
+pub fn rotation_radians_from_degrees(degrees: f64) -> f32 {
+    finite_or(degrees, 0.0).to_radians() as f32
+}
+
 #[inline]
 fn finite_or(value: f64, fallback: f64) -> f64 {
     if value.is_finite() { value } else { fallback }
@@ -506,5 +553,42 @@ mod tests {
             touch_orientation_from_degrees(f64::INFINITY),
             PointerOrientation::default()
         );
+    }
+
+    #[test]
+    fn pinch_growth_is_a_positive_fraction() {
+        // Growing from the 1.0 begin baseline to 1.1 is a 10% increase.
+        assert!((pinch_scale_fraction(1.0, 1.1) - 0.1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn pinch_shrink_is_a_negative_fraction() {
+        assert!((pinch_scale_fraction(1.0, 0.5) + 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn pinch_fraction_is_relative_to_the_previous_scale() {
+        // Two updates each growing the absolute scale by 10% each report ~10%,
+        // because the protocol's scale is absolute, not per-update.
+        assert!((pinch_scale_fraction(1.1, 1.21) - 0.1).abs() < 1e-5);
+    }
+
+    #[test]
+    fn pinch_fraction_sanitizes_degenerate_scales() {
+        // Non-positive previous falls back to 1.0; non-finite current is treated
+        // as no change.
+        assert_eq!(pinch_scale_fraction(0.0, 1.0), 0.0);
+        assert_eq!(pinch_scale_fraction(1.0, f64::NAN), 0.0);
+    }
+
+    #[test]
+    fn rotation_converts_degrees_to_clockwise_radians() {
+        assert!((rotation_radians_from_degrees(90.0) - core::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        assert!((rotation_radians_from_degrees(-45.0) + core::f32::consts::FRAC_PI_4).abs() < 1e-6);
+    }
+
+    #[test]
+    fn rotation_non_finite_is_zero() {
+        assert_eq!(rotation_radians_from_degrees(f64::INFINITY), 0.0);
     }
 }
