@@ -29,8 +29,8 @@
 //! [`PointerEvent::Down`]/[`PointerEvent::Up`] carrying [`PointerButton::Primary`],
 //! or [`PointerButton::PenEraser`] for an eraser tool. Stylus barrel buttons are
 //! mapped through [`mapping::pen_button_from_evdev`]. `pressure` populates
-//! [`PointerState::pressure`] (falling back to the active-unknown `0.5` for tools
-//! that report no pressure), `slider` populates
+//! [`PointerState::pressure`] (falling back to the active-unknown `0.5` while the
+//! tip is down with no pressure reported for the contact), `slider` populates
 //! [`PointerState::tangential_pressure`], and `tilt` populates
 //! [`PointerState::orientation`]. `proximity_in`/`proximity_out` become
 //! [`PointerEvent::Enter`]/[`PointerEvent::Leave`], and the serial of the most
@@ -119,9 +119,11 @@ pub struct TabletToolReducer {
     in_proximity: bool,
     /// Serial of the most recent `proximity_in`, for `set_cursor`.
     proximity_serial: Option<u32>,
-    /// Whether the tool has ever reported a `pressure` axis, so the tip-down
-    /// fallback pressure is only used by tools without a pressure sensor.
-    pressure_reported: bool,
+    /// Whether a `pressure` value has been reported for the current contact. A
+    /// `pressure` event sets it; lifting the tip or leaving proximity clears it,
+    /// so a tip-down with no reported pressure falls back to the active-unknown
+    /// `ACTIVE_PRESSURE` rather than emitting a stale release-level value.
+    pressure_known: bool,
     /// Per-frame changes accumulated since the last `frame`.
     pending: PendingFrame,
     /// Click counter, shared with the pointer reducer.
@@ -138,7 +140,7 @@ impl Default for TabletToolReducer {
             tip_button: PointerButton::Primary,
             in_proximity: false,
             proximity_serial: None,
-            pressure_reported: false,
+            pressure_known: false,
             pending: PendingFrame::default(),
             counter: TapCounter::default(),
             last_seen_time: None,
@@ -232,7 +234,7 @@ impl TabletToolReducer {
 
     /// Handle a `pressure` event: update the normalized pressure.
     fn set_pressure(&mut self, pressure: u32) {
-        self.pressure_reported = true;
+        self.pressure_known = true;
         self.state.pressure = mapping::pressure_from_normalized(pressure);
         self.pending.motion = true;
     }
@@ -274,7 +276,7 @@ impl TabletToolReducer {
         // supersedes a bare move within the same frame.
         if pending.tip_down {
             self.state.buttons.insert(self.tip_button);
-            if !self.pressure_reported {
+            if !self.pressure_known {
                 self.state.pressure = ACTIVE_PRESSURE;
             }
             let event = self.button_event(Some(self.tip_button), true);
@@ -282,6 +284,8 @@ impl TabletToolReducer {
         } else if pending.tip_up {
             self.state.buttons.remove(self.tip_button);
             self.state.pressure = RELEASED_PRESSURE;
+            // The contact ended; the next tip-down needs its own pressure value.
+            self.pressure_known = false;
             let event = self.button_event(Some(self.tip_button), false);
             events.push(self.counter.attach_count(scale_factor, event));
         } else if pending.motion {
@@ -342,10 +346,11 @@ impl TabletToolReducer {
     }
 
     /// Reset the per-proximity state after a `proximity_out`, keeping the tool's
-    /// derived type and pressure capability for the next time it enters.
+    /// derived type for the next time it enters.
     fn reset_on_leave(&mut self) {
         self.in_proximity = false;
         self.proximity_serial = None;
+        self.pressure_known = false;
         let time = self.state.time;
         let scale_factor = self.state.scale_factor;
         self.state = PointerState {
@@ -495,6 +500,63 @@ mod tests {
             panic!("expected a down, got {:?}", events[0]);
         };
         assert!((d.state.pressure - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn tip_down_after_a_pressure_cycle_falls_back_to_active_pressure() {
+        let mut reducer = TabletToolReducer::default();
+
+        // A first contact reports real pressure.
+        reducer.proximity_in(1);
+        let _ = reducer.reduce(1.0, &down(), 1);
+        let _ = reducer.reduce(1.0, &pressure(65535), 1);
+        let _ = reducer.reduce(1.0, &frame(), 1);
+
+        // Release the tip and leave proximity; both reset pressure to released.
+        let _ = reducer.reduce(1.0, &Event::Up, 2);
+        let _ = reducer.reduce(1.0, &frame(), 2);
+        let _ = reducer.reduce(1.0, &Event::ProximityOut, 3);
+        let _ = reducer.reduce(1.0, &frame(), 3);
+
+        // A new contact whose down frame carries no pressure must still report
+        // the active-unknown fallback, never the stale 0.0 from the last contact.
+        reducer.proximity_in(4);
+        let _ = reducer.reduce(1.0, &down(), 4);
+        let events = reducer.reduce(1.0, &frame(), 4);
+        let down = events
+            .iter()
+            .find_map(|e| match e {
+                PointerEvent::Down(d) => Some(d),
+                _ => None,
+            })
+            .expect("expected a tip down");
+        assert_eq!(down.state.pressure, ACTIVE_PRESSURE);
+    }
+
+    #[test]
+    fn second_tip_down_in_one_proximity_without_pressure_falls_back_to_active() {
+        let mut reducer = TabletToolReducer::default();
+        reducer.proximity_in(1);
+
+        // First tap reports real pressure, then the tip lifts.
+        let _ = reducer.reduce(1.0, &down(), 1);
+        let _ = reducer.reduce(1.0, &pressure(65535), 1);
+        let _ = reducer.reduce(1.0, &frame(), 1);
+        let _ = reducer.reduce(1.0, &Event::Up, 2);
+        let _ = reducer.reduce(1.0, &frame(), 2);
+
+        // A second tap in the same proximity, with no fresh pressure this frame,
+        // must not carry the released pressure from the first tap.
+        let _ = reducer.reduce(1.0, &down(), 3);
+        let events = reducer.reduce(1.0, &frame(), 3);
+        let down = events
+            .iter()
+            .find_map(|e| match e {
+                PointerEvent::Down(d) => Some(d),
+                _ => None,
+            })
+            .expect("expected a tip down");
+        assert_eq!(down.state.pressure, ACTIVE_PRESSURE);
     }
 
     #[test]
