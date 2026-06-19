@@ -19,8 +19,9 @@ This release has an [MSRV][] of 1.85.
 - Platform-neutral Wayland input mapping helpers in the `mapping` module:
   evdev pointer-button mapping, surface-local coordinate scaling, scroll-axis
   frame to `ScrollDelta` conversion, pointer and touch identity helpers, touch
-  contact-geometry and orientation conversions, modifier helpers, pinch
-  scale-fraction and rotation conversions, and tablet-tool helpers (stylus-button
+  contact-geometry and orientation conversions, modifier helpers, an evdev
+  keyboard scancode to physical-key `Code` mapping, pinch scale-fraction and
+  rotation conversions, and tablet-tool helpers (stylus-button
   mapping, tool-type to pointer-type and tip-button mapping, normalized pressure
   and slider conversions, and tilt-to-orientation conversion).
 - `pointer::PointerEventReducer`, which reduces a `wl_pointer` event stream into
@@ -39,6 +40,11 @@ This release has an [MSRV][] of 1.85.
   tilt, and slider axes, mapping the tip and stylus barrel buttons (an eraser
   tool's tip to the pen-eraser button), surfacing proximity as enter and leave,
   and stamping a caller-provided monotonic timestamp.
+- `keyboard::KeyboardEventReducer`, which reduces a `wl_keyboard` event stream
+  into `KeyboardEvent`s, mapping each evdev scancode to its physical W3C `Code`
+  and key state, self-tracking the modifier set from the physical modifier keys,
+  seeding pressed-key state on focus enter, and exposing the key-repeat
+  parameters. Logical key values and typed text require the `xkb` feature.
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
 

@@ -51,6 +51,9 @@ pub mod mapping;
 pub mod gesture;
 
 #[cfg(target_os = "linux")]
+pub mod keyboard;
+
+#[cfg(target_os = "linux")]
 pub mod pointer;
 
 #[cfg(target_os = "linux")]
