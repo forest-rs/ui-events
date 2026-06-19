@@ -23,6 +23,73 @@ use ui_events::pointer::{
     ContactGeometry, PointerButton, PointerId, PointerInfo, PointerOrientation, PointerType,
 };
 
+// `std` supplies these float methods; `no_std` builds route them through `libm`.
+// The tilt/orientation math works in `f32`, so the `libm` `*f` variants are used.
+// `to_radians`, `clamp`, and `abs` resolve in `core` and need no shim. See the
+// crate-level feature documentation.
+#[cfg(feature = "std")]
+fn tan(value: f32) -> f32 {
+    value.tan()
+}
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+fn tan(value: f32) -> f32 {
+    libm::tanf(value)
+}
+
+#[cfg(feature = "std")]
+fn asin(value: f32) -> f32 {
+    value.asin()
+}
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+fn asin(value: f32) -> f32 {
+    libm::asinf(value)
+}
+
+#[cfg(feature = "std")]
+fn atan2(y: f32, x: f32) -> f32 {
+    y.atan2(x)
+}
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+fn atan2(y: f32, x: f32) -> f32 {
+    libm::atan2f(y, x)
+}
+
+#[cfg(feature = "std")]
+fn mul_add(value: f32, a: f32, b: f32) -> f32 {
+    value.mul_add(a, b)
+}
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+fn mul_add(value: f32, a: f32, b: f32) -> f32 {
+    libm::fmaf(value, a, b)
+}
+
+#[cfg(feature = "std")]
+fn sqrt(value: f32) -> f32 {
+    value.sqrt()
+}
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+fn sqrt(value: f32) -> f32 {
+    libm::sqrtf(value)
+}
+
+/// Euclidean remainder of `value` by the positive `modulus`, in `[0, modulus)`.
+#[cfg(feature = "std")]
+fn rem_euclid(value: f32, modulus: f32) -> f32 {
+    value.rem_euclid(modulus)
+}
+#[cfg(all(not(feature = "std"), feature = "libm"))]
+fn rem_euclid(value: f32, modulus: f32) -> f32 {
+    let remainder = libm::fmodf(value, modulus);
+    if remainder < 0.0 {
+        remainder + modulus.abs()
+    } else {
+        remainder
+    }
+}
+
+#[cfg(all(not(feature = "std"), not(feature = "libm")))]
+compile_error!("ui-events-wayland requires either the `std` or `libm` feature");
+
 // evdev pointer button codes from `linux/input-event-codes.h`.
 const BTN_LEFT: u32 = 0x110;
 const BTN_RIGHT: u32 = 0x111;
@@ -806,8 +873,10 @@ pub fn touch_orientation_from_degrees(orientation_deg: f64) -> PointerOrientatio
         clippy::cast_possible_truncation,
         reason = "Wayland reports orientation as f64 degrees; ui-events stores azimuth as f32"
     )]
-    let azimuth = (core::f32::consts::FRAC_PI_2 + (orientation_deg as f32).to_radians())
-        .rem_euclid(core::f32::consts::TAU);
+    let azimuth = rem_euclid(
+        core::f32::consts::FRAC_PI_2 + (orientation_deg as f32).to_radians(),
+        core::f32::consts::TAU,
+    );
     PointerOrientation {
         altitude: core::f32::consts::FRAC_PI_2,
         azimuth,
@@ -972,17 +1041,17 @@ pub fn pointer_orientation_from_tilt_degrees(
         (finite_or(tilt_x_deg, 0.0) as f32).clamp(-MAX_TILT_DEGREES, MAX_TILT_DEGREES),
         (finite_or(tilt_y_deg, 0.0) as f32).clamp(-MAX_TILT_DEGREES, MAX_TILT_DEGREES),
     );
-    let x = tilt_x.to_radians().tan();
-    let y = tilt_y.to_radians().tan();
+    let x = tan(tilt_x.to_radians());
+    let y = tan(tilt_y.to_radians());
 
     // The pen axis is the normalized vector (x, y, 1); its z component is the
     // sine of the altitude, and its projection onto the surface gives the azimuth.
-    let z = 1.0 / (x.mul_add(x, y * y) + 1.0).sqrt();
-    let altitude = z.asin();
+    let z = 1.0 / sqrt(mul_add(x, x, y * y) + 1.0);
+    let altitude = asin(z);
     let azimuth = if x == 0.0 && y == 0.0 {
         core::f32::consts::FRAC_PI_2
     } else {
-        y.atan2(x)
+        atan2(y, x)
     };
     PointerOrientation { altitude, azimuth }
 }

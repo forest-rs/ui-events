@@ -63,6 +63,13 @@ links `libxkbcommon` and uses the compositor's keymap to resolve logical key
 values, typed text, and the authoritative modifier set (including the lock
 states and Alt Graph).
 
+## Feature policy
+
+- `std` is enabled by default.
+- `no_std` builds require `libm`, which supplies the trigonometry the tablet
+  and touch mapping use.
+- `xkb` reads the compositor keymap through `std::fs`, so it implies `std`.
+
 [`PointerState`]: ui_events::pointer::PointerState
 [`ui-events`]: https://docs.rs/ui-events/
 

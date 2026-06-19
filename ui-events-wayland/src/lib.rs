@@ -40,6 +40,13 @@
 //! values, typed text, and the authoritative modifier set (including the lock
 //! states and Alt Graph).
 //!
+//! ## Feature policy
+//!
+//! - `std` is enabled by default.
+//! - `no_std` builds require `libm`, which supplies the trigonometry the tablet
+//!   and touch mapping use.
+//! - `xkb` reads the compositor keymap through `std::fs`, so it implies `std`.
+//!
 //! [`PointerState`]: ui_events::pointer::PointerState
 //! [`ui-events`]: https://docs.rs/ui-events/
 
@@ -60,6 +67,11 @@ extern crate alloc;
 // descriptor through `std::fs`.
 #[cfg(feature = "xkb")]
 extern crate std;
+
+// `libm` is only used by `no_std` builds (the `mapping` trigonometry); keep it
+// referenced so a `std + libm` build does not trip `unused_crate_dependencies`.
+#[cfg(all(feature = "std", feature = "libm"))]
+use libm as _;
 
 pub mod mapping;
 

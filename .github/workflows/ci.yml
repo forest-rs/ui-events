@@ -16,9 +16,10 @@ env:
   RUST_MIN_VER_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-wayland -p ui-events-web -p ui-events-winit -p ui-input-state -p ui-theme"
   # List of packages that will be checked for `no_std` builds.
   # This should be limited to packages that are intended for publishing.
-  RUST_NO_STD_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-input-state -p ui-theme"
+  RUST_NO_STD_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-wayland -p ui-input-state -p ui-theme"
   # List of features that depend on the standard library and will be excluded from no_std checks.
-  FEATURES_DEPENDING_ON_STD: "std,default"
+  # ui-events-wayland's `xkb` reads the keymap fd through `std::fs`, so it implies `std`.
+  FEATURES_DEPENDING_ON_STD: "std,default,xkb"
 
 
 # Rationale

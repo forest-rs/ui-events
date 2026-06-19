@@ -1364,6 +1364,7 @@ name = "ui-events-wayland"
 version = "0.3.0"
 dependencies = [
  "dpi",
+ "libm",
  "ui-events",
  "wayland-client",
  "wayland-protocols",
