@@ -51,6 +51,10 @@ This release has an [MSRV][] of 1.85.
   that links `libxkbcommon` and uses the compositor's keymap to resolve logical
   key values, typed text, the key location, and the authoritative modifier set
   (including the lock states and the Alt Graph modifier).
+- `seat::SeatReducer`, which aggregates a seat's pointer, keyboard, and touch
+  reducers behind its `wl_seat` capabilities, routing each device's events into
+  a uniform `SeatEventTranslation` stream and dropping a device's reducer when
+  its capability is withdrawn.
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
 

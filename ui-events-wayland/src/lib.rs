@@ -65,6 +65,9 @@ pub mod keyboard;
 pub mod pointer;
 
 #[cfg(target_os = "linux")]
+pub mod seat;
+
+#[cfg(target_os = "linux")]
 pub mod tablet;
 
 #[cfg(target_os = "linux")]
