@@ -26,6 +26,7 @@
 //! [`PointerState`]: ui_events::pointer::PointerState
 //! [`PointerButton`]: ui_events::pointer::PointerButton
 //! [`PointerType::Touch`]: ui_events::pointer::PointerType::Touch
+//! [`PointerId`]: ui_events::pointer::PointerId
 //! [`PointerId::PRIMARY`]: ui_events::pointer::PointerId::PRIMARY
 
 use alloc::vec::Vec;
