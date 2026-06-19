@@ -17,9 +17,11 @@
 //! are fully assembled before its event is produced. Every emitted event carries
 //! `pointer_type` [`PointerType::Touch`] and no [`PointerButton`].
 //!
-//! Contacts are identified by their `wl_touch` contact id. The lowest active id
-//! is mapped to [`PointerId::PRIMARY`] and the rest are offset to avoid colliding
-//! with it; see [`mapping::touch_pointer_info`].
+//! Each contact is assigned a stable [`PointerId`] on the `frame` that first
+//! reports it and keeps that id until it lifts, so a contact joining later never
+//! changes an established contact's identity. While no contact holds it, the
+//! lowest active id claims [`PointerId::PRIMARY`]; the rest are offset to avoid
+//! colliding with it. See [`mapping::touch_pointer_info`].
 //!
 //! [`PointerState`]: ui_events::pointer::PointerState
 //! [`PointerButton`]: ui_events::pointer::PointerButton
@@ -71,6 +73,9 @@ struct TouchContact {
     id: i32,
     /// State accumulated from `down`, `motion`, `shape`, and `orientation`.
     state: PointerState,
+    /// The stable pointer identity, assigned on this contact's first `frame` and
+    /// retained until it lifts. `None` until that first `frame`.
+    pointer: Option<PointerInfo>,
 }
 
 /// Reduces a `wl_touch` event stream into [`PointerEvent`]s.
@@ -159,7 +164,11 @@ impl TouchEventReducer {
         if let Some(index) = self.contacts.iter().position(|c| c.id == id) {
             self.contacts[index].state = state;
         } else {
-            self.contacts.push(TouchContact { id, state });
+            self.contacts.push(TouchContact {
+                id,
+                state,
+                pointer: None,
+            });
         }
         self.mark_pending(id, Phase::Down);
     }
@@ -214,10 +223,7 @@ impl TouchEventReducer {
         if self.pending.is_empty() {
             return Vec::new();
         }
-        let Some(primary_id) = self.contacts.iter().map(|c| c.id).min() else {
-            self.pending.clear();
-            return Vec::new();
-        };
+        self.assign_pointer_ids();
         let pending = core::mem::take(&mut self.pending);
 
         let mut events = Vec::with_capacity(pending.len());
@@ -226,7 +232,10 @@ impl TouchEventReducer {
                 continue;
             };
             let state = contact.state.clone();
-            let pointer = mapping::touch_pointer_info(change.id as u64, primary_id as u64);
+            // Assigned above; every active contact has a stable identity here.
+            let Some(pointer) = contact.pointer else {
+                continue;
+            };
             let event = match change.phase {
                 Phase::Down => PointerEvent::Down(PointerButtonEvent {
                     button: None,
@@ -258,14 +267,8 @@ impl TouchEventReducer {
     /// Handle a `cancel` event: emit a [`PointerEvent::Cancel`] for every active
     /// contact and forget all touch state.
     fn cancel(&mut self, scale_factor: f64) -> Vec<PointerEvent> {
-        let pointers: Vec<PointerInfo> = match self.contacts.iter().map(|c| c.id).min() {
-            Some(primary_id) => self
-                .contacts
-                .iter()
-                .map(|c| mapping::touch_pointer_info(c.id as u64, primary_id as u64))
-                .collect(),
-            None => Vec::new(),
-        };
+        self.assign_pointer_ids();
+        let pointers: Vec<PointerInfo> = self.contacts.iter().filter_map(|c| c.pointer).collect();
         self.contacts.clear();
         self.pending.clear();
         pointers
@@ -275,6 +278,43 @@ impl TouchEventReducer {
                     .attach_count(scale_factor, PointerEvent::Cancel(pointer))
             })
             .collect()
+    }
+
+    /// Assign a stable [`PointerInfo`] to every contact that lacks one.
+    ///
+    /// A contact keeps the id assigned here until it lifts, so a contact joining
+    /// later never changes an established contact's identity. The primary slot is
+    /// claimed by the lowest-id contact still lacking an id, but only while no
+    /// active contact already holds it; once a contact owns the primary pointer it
+    /// keeps it until it lifts, and a surviving contact is never promoted.
+    fn assign_pointer_ids(&mut self) {
+        let primary_id = self
+            .contacts
+            .iter()
+            .find(|c| {
+                c.pointer
+                    .as_ref()
+                    .is_some_and(PointerInfo::is_primary_pointer)
+            })
+            .map(|c| c.id)
+            .or_else(|| {
+                self.contacts
+                    .iter()
+                    .filter(|c| c.pointer.is_none())
+                    .map(|c| c.id)
+                    .min()
+            });
+        let Some(primary_id) = primary_id else {
+            return;
+        };
+        for contact in &mut self.contacts {
+            if contact.pointer.is_none() {
+                contact.pointer = Some(mapping::touch_pointer_info(
+                    contact.id as u64,
+                    primary_id as u64,
+                ));
+            }
+        }
     }
 
     /// Record the latest [`Phase`] seen for a contact in the current frame.
@@ -404,6 +444,64 @@ mod tests {
         // The higher id (5) is offset by `POINTER_ID_OFFSET` (2) to 7.
         assert!(!higher.pointer.is_primary_pointer());
         assert_eq!(higher.pointer.pointer_id, PointerId::new(7));
+    }
+
+    #[test]
+    fn contact_keeps_its_pointer_id_when_a_lower_id_joins_later() {
+        let mut reducer = TouchEventReducer::default();
+        // Contact 5 is alone on its first frame, so it owns the primary pointer.
+        reducer.down(5, 0.0, 0.0, 1, 1.0);
+        let first = reducer.reduce(1.0, &frame(), 1);
+        let PointerEvent::Down(down5) = &first[0] else {
+            panic!("expected a touch down for id 5, got {:?}", first[0]);
+        };
+        assert!(down5.pointer.is_primary_pointer());
+        let id5 = down5.pointer.pointer_id;
+
+        // A lower id joins in a later frame. It must take a fresh, non-primary id
+        // rather than seizing the primary slot from the established contact 5.
+        reducer.down(2, 0.0, 0.0, 2, 1.0);
+        let second = reducer.reduce(1.0, &frame(), 2);
+        let PointerEvent::Down(down2) = &second[0] else {
+            panic!("expected a touch down for id 2, got {:?}", second[0]);
+        };
+        assert!(!down2.pointer.is_primary_pointer());
+
+        // Contact 5 moves: its pointer id is unchanged from its `down`.
+        let _ = reducer.reduce(1.0, &motion(5, 1.0, 1.0), 3);
+        let third = reducer.reduce(1.0, &frame(), 3);
+        let PointerEvent::Move(move5) = &third[0] else {
+            panic!("expected a touch move for id 5, got {:?}", third[0]);
+        };
+        assert!(move5.pointer.is_primary_pointer());
+        assert_eq!(move5.pointer.pointer_id, id5);
+    }
+
+    #[test]
+    fn primary_contact_lifting_does_not_promote_a_survivor() {
+        let mut reducer = TouchEventReducer::default();
+        reducer.down(5, 0.0, 0.0, 1, 1.0);
+        let _ = reducer.reduce(1.0, &frame(), 1);
+        reducer.down(2, 0.0, 0.0, 2, 1.0);
+        let second = reducer.reduce(1.0, &frame(), 2);
+        let PointerEvent::Down(down2) = &second[0] else {
+            panic!("expected a touch down for id 2, got {:?}", second[0]);
+        };
+        let id2 = down2.pointer.pointer_id;
+        assert!(!down2.pointer.is_primary_pointer());
+
+        // The primary contact lifts. The survivor keeps its own non-primary id
+        // rather than being promoted, which would change its identity mid-contact.
+        let _ = reducer.reduce(1.0, &up(5), 3);
+        let _ = reducer.reduce(1.0, &frame(), 3);
+
+        let _ = reducer.reduce(1.0, &motion(2, 1.0, 1.0), 4);
+        let fourth = reducer.reduce(1.0, &frame(), 4);
+        let PointerEvent::Move(move2) = &fourth[0] else {
+            panic!("expected a touch move for id 2, got {:?}", fourth[0]);
+        };
+        assert!(!move2.pointer.is_primary_pointer());
+        assert_eq!(move2.pointer.pointer_id, id2);
     }
 
     #[test]
