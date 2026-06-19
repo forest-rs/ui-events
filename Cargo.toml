@@ -5,6 +5,7 @@ members = [
     "ui-events-apple-common",
     "ui-events-appkit",
     "ui-events-uikit",
+    "ui-events-wayland",
     "ui-events-web",
     "ui-events-winit",
     "ui-input-state",

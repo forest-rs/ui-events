@@ -1,0 +1,41 @@
+[package]
+name = "ui-events-wayland"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+description = "Bridges Wayland input events into ui-events"
+keywords = ["wayland", "linux", "input", "pointer"]
+categories = ["gui"]
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-unknown-linux-gnu"
+targets = []
+
+[features]
+default = ["std"]
+# `no_std` builds require `libm`, which supplies the trigonometry the tablet and
+# touch mapping use; see the crate-level documentation.
+std = ["ui-events/std", "dpi/std"]
+libm = ["dep:libm"]
+# Resolve logical keys, typed text, and authoritative modifiers from the
+# compositor's XKB keymap. This pulls in `xkbcommon`, which links the system
+# `libxkbcommon`; without it the keyboard reducer resolves only physical keys.
+# Reading the keymap file descriptor uses `std::fs`, so `xkb` implies `std`.
+xkb = ["dep:xkbcommon", "std"]
+
+[dependencies]
+ui-events.workspace = true
+dpi.workspace = true
+libm = { version = "0.2.15", optional = true, default-features = false }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+xkbcommon = { version = "0.9", optional = true, default-features = false }
+
+[lints]
+workspace = true
