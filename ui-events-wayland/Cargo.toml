@@ -15,6 +15,12 @@ all-features = true
 default-target = "x86_64-unknown-linux-gnu"
 targets = []
 
+[features]
+# Resolve logical keys, typed text, and authoritative modifiers from the
+# compositor's XKB keymap. This pulls in `xkbcommon`, which links the system
+# `libxkbcommon`; without it the keyboard reducer resolves only physical keys.
+xkb = ["dep:xkbcommon"]
+
 [dependencies]
 ui-events = { workspace = true, features = ["std"] }
 dpi.workspace = true
@@ -22,6 +28,7 @@ dpi.workspace = true
 [target.'cfg(target_os = "linux")'.dependencies]
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
+xkbcommon = { version = "0.9", optional = true, default-features = false }
 
 [lints]
 workspace = true

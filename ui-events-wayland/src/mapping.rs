@@ -18,7 +18,7 @@
 
 use dpi::PhysicalPosition;
 use ui_events::ScrollDelta;
-use ui_events::keyboard::{Code, Modifiers};
+use ui_events::keyboard::{Code, Key, Location, Modifiers, NamedKey};
 use ui_events::pointer::{
     ContactGeometry, PointerButton, PointerId, PointerInfo, PointerOrientation, PointerType,
 };
@@ -419,6 +419,336 @@ pub fn code_from_evdev_scancode(scancode: u32) -> Code {
         194 => Code::F24,
         _ => Code::Unidentified,
     }
+}
+
+// XKB keysym values for the named (non-typing) keys, from
+// `xkbcommon/xkbcommon-keysyms.h`. These are the frozen X11 keysym constants
+// the `xkb` keymap resolves keys to; the typing keys resolve instead to Unicode
+// or Latin-1 keysyms and carry their text, so they are not listed here.
+const KEY_ISO_LEVEL3_SHIFT: u32 = 0xfe03;
+const KEY_ISO_LEVEL3_LATCH: u32 = 0xfe04;
+const KEY_ISO_LEVEL3_LOCK: u32 = 0xfe05;
+const KEY_ISO_NEXT_GROUP: u32 = 0xfe08;
+const KEY_ISO_PREV_GROUP: u32 = 0xfe0a;
+const KEY_ISO_FIRST_GROUP: u32 = 0xfe0c;
+const KEY_ISO_LAST_GROUP: u32 = 0xfe0e;
+const KEY_ISO_LEFT_TAB: u32 = 0xfe20;
+const KEY_ISO_ENTER: u32 = 0xfe34;
+const KEY_BACKSPACE: u32 = 0xff08;
+const KEY_TAB: u32 = 0xff09;
+const KEY_CLEAR: u32 = 0xff0b;
+const KEY_RETURN: u32 = 0xff0d;
+const KEY_PAUSE: u32 = 0xff13;
+const KEY_SCROLL_LOCK: u32 = 0xff14;
+const KEY_SYS_REQ: u32 = 0xff15;
+const KEY_ESCAPE: u32 = 0xff1b;
+const KEY_MULTI_KEY: u32 = 0xff20;
+const KEY_KANJI: u32 = 0xff21;
+const KEY_MUHENKAN: u32 = 0xff22;
+const KEY_HENKAN_MODE: u32 = 0xff23;
+const KEY_ROMAJI: u32 = 0xff24;
+const KEY_HIRAGANA: u32 = 0xff25;
+const KEY_KATAKANA: u32 = 0xff26;
+const KEY_HIRAGANA_KATAKANA: u32 = 0xff27;
+const KEY_ZENKAKU: u32 = 0xff28;
+const KEY_HANKAKU: u32 = 0xff29;
+const KEY_ZENKAKU_HANKAKU: u32 = 0xff2a;
+const KEY_KANA_LOCK: u32 = 0xff2d;
+const KEY_EISU_TOGGLE: u32 = 0xff30;
+const KEY_HANGUL: u32 = 0xff31;
+const KEY_HANGUL_HANJA: u32 = 0xff34;
+const KEY_HOME: u32 = 0xff50;
+const KEY_LEFT: u32 = 0xff51;
+const KEY_UP: u32 = 0xff52;
+const KEY_RIGHT: u32 = 0xff53;
+const KEY_DOWN: u32 = 0xff54;
+const KEY_PAGE_UP: u32 = 0xff55;
+const KEY_PAGE_DOWN: u32 = 0xff56;
+const KEY_END: u32 = 0xff57;
+const KEY_SELECT: u32 = 0xff60;
+const KEY_PRINT: u32 = 0xff61;
+const KEY_EXECUTE: u32 = 0xff62;
+const KEY_INSERT: u32 = 0xff63;
+const KEY_UNDO: u32 = 0xff65;
+const KEY_REDO: u32 = 0xff66;
+const KEY_MENU: u32 = 0xff67;
+const KEY_FIND: u32 = 0xff68;
+const KEY_CANCEL: u32 = 0xff69;
+const KEY_HELP: u32 = 0xff6a;
+const KEY_BREAK: u32 = 0xff6b;
+const KEY_MODE_SWITCH: u32 = 0xff7e;
+const KEY_NUM_LOCK: u32 = 0xff7f;
+const KEY_KP_TAB: u32 = 0xff89;
+const KEY_KP_ENTER: u32 = 0xff8d;
+const KEY_KP_F1: u32 = 0xff91;
+const KEY_KP_F2: u32 = 0xff92;
+const KEY_KP_F3: u32 = 0xff93;
+const KEY_KP_F4: u32 = 0xff94;
+const KEY_KP_HOME: u32 = 0xff95;
+const KEY_KP_LEFT: u32 = 0xff96;
+const KEY_KP_UP: u32 = 0xff97;
+const KEY_KP_RIGHT: u32 = 0xff98;
+const KEY_KP_DOWN: u32 = 0xff99;
+const KEY_KP_PAGE_UP: u32 = 0xff9a;
+const KEY_KP_PAGE_DOWN: u32 = 0xff9b;
+const KEY_KP_END: u32 = 0xff9c;
+const KEY_KP_INSERT: u32 = 0xff9e;
+const KEY_KP_DELETE: u32 = 0xff9f;
+const KEY_F1: u32 = 0xffbe;
+const KEY_F2: u32 = 0xffbf;
+const KEY_F3: u32 = 0xffc0;
+const KEY_F4: u32 = 0xffc1;
+const KEY_F5: u32 = 0xffc2;
+const KEY_F6: u32 = 0xffc3;
+const KEY_F7: u32 = 0xffc4;
+const KEY_F8: u32 = 0xffc5;
+const KEY_F9: u32 = 0xffc6;
+const KEY_F10: u32 = 0xffc7;
+const KEY_F11: u32 = 0xffc8;
+const KEY_F12: u32 = 0xffc9;
+const KEY_F13: u32 = 0xffca;
+const KEY_F14: u32 = 0xffcb;
+const KEY_F15: u32 = 0xffcc;
+const KEY_F16: u32 = 0xffcd;
+const KEY_F17: u32 = 0xffce;
+const KEY_F18: u32 = 0xffcf;
+const KEY_F19: u32 = 0xffd0;
+const KEY_F20: u32 = 0xffd1;
+const KEY_F21: u32 = 0xffd2;
+const KEY_F22: u32 = 0xffd3;
+const KEY_F23: u32 = 0xffd4;
+const KEY_F24: u32 = 0xffd5;
+const KEY_F25: u32 = 0xffd6;
+const KEY_F26: u32 = 0xffd7;
+const KEY_F27: u32 = 0xffd8;
+const KEY_F28: u32 = 0xffd9;
+const KEY_F29: u32 = 0xffda;
+const KEY_F30: u32 = 0xffdb;
+const KEY_F31: u32 = 0xffdc;
+const KEY_F32: u32 = 0xffdd;
+const KEY_F33: u32 = 0xffde;
+const KEY_F34: u32 = 0xffdf;
+const KEY_F35: u32 = 0xffe0;
+const KEY_SHIFT_L: u32 = 0xffe1;
+const KEY_SHIFT_R: u32 = 0xffe2;
+const KEY_CONTROL_L: u32 = 0xffe3;
+const KEY_CONTROL_R: u32 = 0xffe4;
+const KEY_CAPS_LOCK: u32 = 0xffe5;
+const KEY_META_L: u32 = 0xffe7;
+const KEY_META_R: u32 = 0xffe8;
+const KEY_ALT_L: u32 = 0xffe9;
+const KEY_ALT_R: u32 = 0xffea;
+const KEY_SUPER_L: u32 = 0xffeb;
+const KEY_SUPER_R: u32 = 0xffec;
+const KEY_HYPER_L: u32 = 0xffed;
+const KEY_HYPER_R: u32 = 0xffee;
+const KEY_DELETE: u32 = 0xffff;
+
+/// Map an XKB keysym to a W3C [`NamedKey`], if it names a non-typing key.
+///
+/// The `xkb` keymap resolves each key press to a keysym. The typing keys
+/// (letters, digits, punctuation, and space) resolve to Unicode or Latin-1
+/// keysyms and are better represented by the text they produce, so they return
+/// `None` here and [`key_from_keysym`] falls back to that text. The remaining
+/// keys — editing, navigation, function, modifier, lock, input-method, and
+/// numeric-keypad action keys — map to their [`NamedKey`].
+///
+/// The keypad digit and operator keysyms also return `None`: with Num Lock on
+/// they produce their character, and with it off the compositor reports the
+/// matching navigation keysym (for example `KP_Left`) instead, which is named
+/// here. Obscure multimedia, browser, and power keysyms return `None` too,
+/// mirroring the keys [`code_from_evdev_scancode`] leaves [`Code::Unidentified`].
+///
+/// The Linux "super"/Windows-logo key and the legacy Hyper and Meta keys all
+/// map to [`NamedKey::Meta`], the W3C name for the operating-system key.
+pub fn named_key_from_keysym(keysym: u32) -> Option<NamedKey> {
+    Some(match keysym {
+        KEY_BACKSPACE => NamedKey::Backspace,
+        KEY_TAB | KEY_KP_TAB | KEY_ISO_LEFT_TAB => NamedKey::Tab,
+        KEY_CLEAR => NamedKey::Clear,
+        KEY_RETURN | KEY_KP_ENTER | KEY_ISO_ENTER => NamedKey::Enter,
+        KEY_PAUSE | KEY_BREAK => NamedKey::Pause,
+        KEY_SCROLL_LOCK => NamedKey::ScrollLock,
+        KEY_SYS_REQ | KEY_PRINT => NamedKey::PrintScreen,
+        KEY_ESCAPE => NamedKey::Escape,
+        KEY_DELETE | KEY_KP_DELETE => NamedKey::Delete,
+
+        // Input-method and layout-group keys.
+        KEY_MULTI_KEY => NamedKey::Compose,
+        KEY_MODE_SWITCH => NamedKey::ModeChange,
+        KEY_ISO_NEXT_GROUP => NamedKey::GroupNext,
+        KEY_ISO_PREV_GROUP => NamedKey::GroupPrevious,
+        KEY_ISO_FIRST_GROUP => NamedKey::GroupFirst,
+        KEY_ISO_LAST_GROUP => NamedKey::GroupLast,
+
+        // Japanese and Korean input keys.
+        KEY_KANJI => NamedKey::KanjiMode,
+        KEY_MUHENKAN => NamedKey::NonConvert,
+        KEY_HENKAN_MODE => NamedKey::Convert,
+        KEY_ROMAJI => NamedKey::Romaji,
+        KEY_HIRAGANA => NamedKey::Hiragana,
+        KEY_KATAKANA => NamedKey::Katakana,
+        KEY_HIRAGANA_KATAKANA => NamedKey::HiraganaKatakana,
+        KEY_ZENKAKU => NamedKey::Zenkaku,
+        KEY_HANKAKU => NamedKey::Hankaku,
+        KEY_ZENKAKU_HANKAKU => NamedKey::ZenkakuHankaku,
+        KEY_KANA_LOCK => NamedKey::KanaMode,
+        KEY_EISU_TOGGLE => NamedKey::Alphanumeric,
+        KEY_HANGUL => NamedKey::HangulMode,
+        KEY_HANGUL_HANJA => NamedKey::HanjaMode,
+
+        // Navigation and editing, including the numeric-keypad equivalents the
+        // keymap reports when Num Lock is off.
+        KEY_HOME | KEY_KP_HOME => NamedKey::Home,
+        KEY_LEFT | KEY_KP_LEFT => NamedKey::ArrowLeft,
+        KEY_UP | KEY_KP_UP => NamedKey::ArrowUp,
+        KEY_RIGHT | KEY_KP_RIGHT => NamedKey::ArrowRight,
+        KEY_DOWN | KEY_KP_DOWN => NamedKey::ArrowDown,
+        KEY_PAGE_UP | KEY_KP_PAGE_UP => NamedKey::PageUp,
+        KEY_PAGE_DOWN | KEY_KP_PAGE_DOWN => NamedKey::PageDown,
+        KEY_END | KEY_KP_END => NamedKey::End,
+        KEY_INSERT | KEY_KP_INSERT => NamedKey::Insert,
+        KEY_SELECT => NamedKey::Select,
+        KEY_EXECUTE => NamedKey::Execute,
+        KEY_UNDO => NamedKey::Undo,
+        KEY_REDO => NamedKey::Redo,
+        KEY_MENU => NamedKey::ContextMenu,
+        KEY_FIND => NamedKey::Find,
+        KEY_CANCEL => NamedKey::Cancel,
+        KEY_HELP => NamedKey::Help,
+        KEY_NUM_LOCK => NamedKey::NumLock,
+
+        // Function keys, including the keypad's F1–F4.
+        KEY_F1 | KEY_KP_F1 => NamedKey::F1,
+        KEY_F2 | KEY_KP_F2 => NamedKey::F2,
+        KEY_F3 | KEY_KP_F3 => NamedKey::F3,
+        KEY_F4 | KEY_KP_F4 => NamedKey::F4,
+        KEY_F5 => NamedKey::F5,
+        KEY_F6 => NamedKey::F6,
+        KEY_F7 => NamedKey::F7,
+        KEY_F8 => NamedKey::F8,
+        KEY_F9 => NamedKey::F9,
+        KEY_F10 => NamedKey::F10,
+        KEY_F11 => NamedKey::F11,
+        KEY_F12 => NamedKey::F12,
+        KEY_F13 => NamedKey::F13,
+        KEY_F14 => NamedKey::F14,
+        KEY_F15 => NamedKey::F15,
+        KEY_F16 => NamedKey::F16,
+        KEY_F17 => NamedKey::F17,
+        KEY_F18 => NamedKey::F18,
+        KEY_F19 => NamedKey::F19,
+        KEY_F20 => NamedKey::F20,
+        KEY_F21 => NamedKey::F21,
+        KEY_F22 => NamedKey::F22,
+        KEY_F23 => NamedKey::F23,
+        KEY_F24 => NamedKey::F24,
+        KEY_F25 => NamedKey::F25,
+        KEY_F26 => NamedKey::F26,
+        KEY_F27 => NamedKey::F27,
+        KEY_F28 => NamedKey::F28,
+        KEY_F29 => NamedKey::F29,
+        KEY_F30 => NamedKey::F30,
+        KEY_F31 => NamedKey::F31,
+        KEY_F32 => NamedKey::F32,
+        KEY_F33 => NamedKey::F33,
+        KEY_F34 => NamedKey::F34,
+        KEY_F35 => NamedKey::F35,
+
+        // Modifier keys.
+        KEY_SHIFT_L | KEY_SHIFT_R => NamedKey::Shift,
+        KEY_CONTROL_L | KEY_CONTROL_R => NamedKey::Control,
+        KEY_CAPS_LOCK => NamedKey::CapsLock,
+        KEY_ALT_L | KEY_ALT_R => NamedKey::Alt,
+        KEY_META_L | KEY_META_R | KEY_SUPER_L | KEY_SUPER_R | KEY_HYPER_L | KEY_HYPER_R => {
+            NamedKey::Meta
+        }
+        KEY_ISO_LEVEL3_SHIFT | KEY_ISO_LEVEL3_LATCH | KEY_ISO_LEVEL3_LOCK => NamedKey::AltGraph,
+
+        _ => return None,
+    })
+}
+
+/// Resolve an XKB keysym and its typed text into a logical [`Key`].
+///
+/// The keysym is matched against [`named_key_from_keysym`] first, so the control
+/// keys whose text would be a control character (such as Enter or Escape) are
+/// named rather than treated as text. Otherwise non-empty `text` containing no
+/// control characters becomes a [`Key::Character`] — this covers letters,
+/// digits, punctuation, and the space key, which has no named-key form. Anything
+/// else resolves to [`NamedKey::Unidentified`].
+///
+/// `text` is the string from `xkb_state_key_get_utf8` for the key in the current
+/// keyboard state.
+pub fn key_from_keysym(keysym: u32, text: &str) -> Key {
+    if let Some(named) = named_key_from_keysym(keysym) {
+        return Key::Named(named);
+    }
+    if !text.is_empty() && !text.chars().any(char::is_control) {
+        return Key::Character(text.into());
+    }
+    Key::Named(NamedKey::Unidentified)
+}
+
+/// Map a physical [`Code`] to its W3C keyboard [`Location`].
+///
+/// The left and right variants of the modifier keys map to [`Location::Left`]
+/// and [`Location::Right`], the numeric-keypad keys to [`Location::Numpad`], and
+/// everything else — including `NumLock`, which the specification keeps on the
+/// standard keyboard — to [`Location::Standard`].
+pub fn location_from_code(code: Code) -> Location {
+    match code {
+        Code::ShiftLeft | Code::ControlLeft | Code::AltLeft | Code::MetaLeft => Location::Left,
+        Code::ShiftRight | Code::ControlRight | Code::AltRight | Code::MetaRight => Location::Right,
+        Code::Numpad0
+        | Code::Numpad1
+        | Code::Numpad2
+        | Code::Numpad3
+        | Code::Numpad4
+        | Code::Numpad5
+        | Code::Numpad6
+        | Code::Numpad7
+        | Code::Numpad8
+        | Code::Numpad9
+        | Code::NumpadAdd
+        | Code::NumpadSubtract
+        | Code::NumpadMultiply
+        | Code::NumpadDivide
+        | Code::NumpadDecimal
+        | Code::NumpadComma
+        | Code::NumpadEnter
+        | Code::NumpadEqual => Location::Numpad,
+        _ => Location::Standard,
+    }
+}
+
+/// Assemble a [`Modifiers`] set from the individually active XKB modifiers.
+///
+/// This is the keymap-aware counterpart to [`modifiers_from_bools`]: it adds the
+/// lock states and the Alt Graph (ISO level-3) modifier, which the keymap
+/// resolves but the bare key stream cannot. Each argument is whether the
+/// corresponding modifier is active, as reported by
+/// `xkb_state_mod_name_is_active`.
+pub fn modifiers_from_active_mods(
+    ctrl: bool,
+    alt: bool,
+    shift: bool,
+    meta: bool,
+    caps_lock: bool,
+    num_lock: bool,
+    alt_graph: bool,
+) -> Modifiers {
+    let mut m = modifiers_from_bools(ctrl, alt, shift, meta);
+    if caps_lock {
+        m.insert(Modifiers::CAPS_LOCK);
+    }
+    if num_lock {
+        m.insert(Modifiers::NUM_LOCK);
+    }
+    if alt_graph {
+        m.insert(Modifiers::ALT_GRAPH);
+    }
+    m
 }
 
 /// Build a [`PointerInfo`] for a touch contact, reserving [`PointerId::PRIMARY`]
@@ -1051,5 +1381,117 @@ mod tests {
         let orientation = pointer_orientation_from_tilt_degrees(f64::NAN, f64::INFINITY);
         assert!((orientation.altitude - core::f32::consts::FRAC_PI_2).abs() < 1e-5);
         assert!((orientation.azimuth - core::f32::consts::FRAC_PI_2).abs() < 1e-5);
+    }
+
+    #[test]
+    fn keysym_named_keys_map_to_expected_named_keys() {
+        assert_eq!(named_key_from_keysym(KEY_ESCAPE), Some(NamedKey::Escape));
+        assert_eq!(named_key_from_keysym(KEY_RETURN), Some(NamedKey::Enter));
+        assert_eq!(named_key_from_keysym(KEY_KP_ENTER), Some(NamedKey::Enter));
+        assert_eq!(
+            named_key_from_keysym(KEY_BACKSPACE),
+            Some(NamedKey::Backspace)
+        );
+        assert_eq!(named_key_from_keysym(KEY_F1), Some(NamedKey::F1));
+        assert_eq!(named_key_from_keysym(KEY_F24), Some(NamedKey::F24));
+        assert_eq!(named_key_from_keysym(KEY_LEFT), Some(NamedKey::ArrowLeft));
+        // The numpad arrow (Num Lock off) resolves to the same logical key.
+        assert_eq!(
+            named_key_from_keysym(KEY_KP_LEFT),
+            Some(NamedKey::ArrowLeft)
+        );
+        assert_eq!(named_key_from_keysym(KEY_SHIFT_L), Some(NamedKey::Shift));
+        assert_eq!(named_key_from_keysym(KEY_SHIFT_R), Some(NamedKey::Shift));
+        // The super/logo and legacy meta keys all fold into Meta.
+        assert_eq!(named_key_from_keysym(KEY_SUPER_L), Some(NamedKey::Meta));
+        assert_eq!(named_key_from_keysym(KEY_META_R), Some(NamedKey::Meta));
+        assert_eq!(
+            named_key_from_keysym(KEY_ISO_LEVEL3_SHIFT),
+            Some(NamedKey::AltGraph)
+        );
+        assert_eq!(named_key_from_keysym(KEY_NUM_LOCK), Some(NamedKey::NumLock));
+    }
+
+    #[test]
+    fn typing_keysyms_are_not_named() {
+        // Letters, digits, and space resolve to text, not a named key.
+        assert_eq!(named_key_from_keysym(0x61), None); // 'a'
+        assert_eq!(named_key_from_keysym(0x41), None); // 'A'
+        assert_eq!(named_key_from_keysym(0x31), None); // '1'
+        assert_eq!(named_key_from_keysym(0x20), None); // space
+        assert_eq!(named_key_from_keysym(0), None); // NoSymbol
+    }
+
+    #[test]
+    fn key_from_keysym_prefers_named_then_text() {
+        // A named key wins even though xkb hands back a control character for it.
+        assert_eq!(
+            key_from_keysym(KEY_ESCAPE, "\u{1b}"),
+            Key::Named(NamedKey::Escape)
+        );
+        // Printable text becomes a character key.
+        assert_eq!(key_from_keysym(0x61, "a"), Key::Character("a".into()));
+        // Space has no named-key form, so it comes through as its character.
+        assert_eq!(key_from_keysym(0x20, " "), Key::Character(" ".into()));
+        // Bare control text with no named key is unidentified, not a character.
+        assert_eq!(
+            key_from_keysym(0, "\u{1b}"),
+            Key::Named(NamedKey::Unidentified)
+        );
+        assert_eq!(key_from_keysym(0, ""), Key::Named(NamedKey::Unidentified));
+    }
+
+    #[test]
+    fn location_from_code_classifies_sides_and_numpad() {
+        assert_eq!(location_from_code(Code::ShiftLeft), Location::Left);
+        assert_eq!(location_from_code(Code::ControlRight), Location::Right);
+        assert_eq!(location_from_code(Code::MetaLeft), Location::Left);
+        assert_eq!(location_from_code(Code::Numpad5), Location::Numpad);
+        assert_eq!(location_from_code(Code::NumpadEnter), Location::Numpad);
+        assert_eq!(location_from_code(Code::KeyA), Location::Standard);
+        // Num Lock itself stays on the standard keyboard.
+        assert_eq!(location_from_code(Code::NumLock), Location::Standard);
+    }
+
+    #[test]
+    fn modifiers_from_active_mods_adds_locks_and_alt_graph() {
+        let mods = modifiers_from_active_mods(true, false, true, false, true, false, true);
+        assert!(mods.contains(Modifiers::CONTROL));
+        assert!(mods.contains(Modifiers::SHIFT));
+        assert!(mods.contains(Modifiers::CAPS_LOCK));
+        assert!(mods.contains(Modifiers::ALT_GRAPH));
+        assert!(!mods.contains(Modifiers::ALT));
+        assert!(!mods.contains(Modifiers::META));
+        assert!(!mods.contains(Modifiers::NUM_LOCK));
+    }
+
+    /// Cross-check the hand-copied keysym constants against the libxkbcommon
+    /// definitions, so a transcription error in the table is caught. This needs
+    /// the `xkbcommon` crate, so it is gated to a Linux build with the `xkb`
+    /// feature.
+    #[cfg(all(target_os = "linux", feature = "xkb"))]
+    #[test]
+    fn keysym_constants_match_xkbcommon() {
+        use xkbcommon::xkb::keysyms;
+        assert_eq!(KEY_BACKSPACE, keysyms::KEY_BackSpace);
+        assert_eq!(KEY_TAB, keysyms::KEY_Tab);
+        assert_eq!(KEY_RETURN, keysyms::KEY_Return);
+        assert_eq!(KEY_ESCAPE, keysyms::KEY_Escape);
+        assert_eq!(KEY_DELETE, keysyms::KEY_Delete);
+        assert_eq!(KEY_HOME, keysyms::KEY_Home);
+        assert_eq!(KEY_LEFT, keysyms::KEY_Left);
+        assert_eq!(KEY_END, keysyms::KEY_End);
+        assert_eq!(KEY_KP_ENTER, keysyms::KEY_KP_Enter);
+        assert_eq!(KEY_KP_LEFT, keysyms::KEY_KP_Left);
+        assert_eq!(KEY_NUM_LOCK, keysyms::KEY_Num_Lock);
+        assert_eq!(KEY_F1, keysyms::KEY_F1);
+        assert_eq!(KEY_F12, keysyms::KEY_F12);
+        assert_eq!(KEY_F35, keysyms::KEY_F35);
+        assert_eq!(KEY_SHIFT_L, keysyms::KEY_Shift_L);
+        assert_eq!(KEY_CONTROL_R, keysyms::KEY_Control_R);
+        assert_eq!(KEY_SUPER_L, keysyms::KEY_Super_L);
+        assert_eq!(KEY_ALT_R, keysyms::KEY_Alt_R);
+        assert_eq!(KEY_ISO_LEVEL3_SHIFT, keysyms::KEY_ISO_Level3_Shift);
+        assert_eq!(KEY_ISO_LEFT_TAB, keysyms::KEY_ISO_Left_Tab);
     }
 }

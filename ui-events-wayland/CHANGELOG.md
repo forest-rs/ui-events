@@ -20,10 +20,12 @@ This release has an [MSRV][] of 1.85.
   evdev pointer-button mapping, surface-local coordinate scaling, scroll-axis
   frame to `ScrollDelta` conversion, pointer and touch identity helpers, touch
   contact-geometry and orientation conversions, modifier helpers, an evdev
-  keyboard scancode to physical-key `Code` mapping, pinch scale-fraction and
-  rotation conversions, and tablet-tool helpers (stylus-button
-  mapping, tool-type to pointer-type and tip-button mapping, normalized pressure
-  and slider conversions, and tilt-to-orientation conversion).
+  keyboard scancode to physical-key `Code` mapping, XKB keysym to named-key and
+  logical-key mapping, physical-`Code` to key-location mapping, a keymap-active
+  modifiers to modifier-set helper, pinch scale-fraction and rotation
+  conversions, and tablet-tool helpers (stylus-button mapping, tool-type to
+  pointer-type and tip-button mapping, normalized pressure and slider
+  conversions, and tilt-to-orientation conversion).
 - `pointer::PointerEventReducer`, which reduces a `wl_pointer` event stream into
   `PointerEvent`s, accumulating frame-batched scroll axes, tracking button and
   click-count state, and stamping a caller-provided monotonic timestamp.
@@ -45,6 +47,10 @@ This release has an [MSRV][] of 1.85.
   and key state, self-tracking the modifier set from the physical modifier keys,
   seeding pressed-key state on focus enter, and exposing the key-repeat
   parameters. Logical key values and typed text require the `xkb` feature.
+- An optional, non-default `xkb` feature for `keyboard::KeyboardEventReducer`
+  that links `libxkbcommon` and uses the compositor's keymap to resolve logical
+  key values, typed text, the key location, and the authoritative modifier set
+  (including the lock states and the Alt Graph modifier).
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
 

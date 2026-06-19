@@ -244,6 +244,15 @@ jobs:
         with:
           save-if: ${{ github.event_name != 'merge_group' }}
 
+      - name: install libxkbcommon (Linux)
+        # The ui-events-wayland `xkb` feature, enabled by `--all-features`, links
+        # the system libxkbcommon; `xkb-data` lets its keymap tests run instead of
+        # skipping. Only the Linux job builds and runs this dependency.
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev xkb-data
+
       - name: cargo nextest
         run: cargo nextest run --workspace --locked --all-features --no-fail-fast
 
@@ -297,7 +306,10 @@ jobs:
           save-if: ${{ github.event_name != 'merge_group' }}
 
       - name: cargo check
-        run: cargo hack check ${{ env.RUST_MIN_VER_PKGS }} --locked --optional-deps --each-feature --ignore-unknown-features --features std
+        # The ui-events-wayland `xkb` feature pulls in xkbcommon, a third-party
+        # binding to the system libxkbcommon that declares no MSRV, so it is
+        # excluded here and not covered by this workspace's MSRV guarantee.
+        run: cargo hack check ${{ env.RUST_MIN_VER_PKGS }} --locked --optional-deps --each-feature --ignore-unknown-features --exclude-features xkb --features std
 
   check-msrv-no-std:
     name: cargo check (msrv)
@@ -376,7 +388,15 @@ jobs:
           save-if: ${{ github.event_name != 'merge_group' }}
 
       - name: cargo miri
-        run: cargo miri test --workspace --locked --all-features --target s390x-unknown-linux-gnu --no-fail-fast
+        # The ui-events-wayland `xkb` feature links the system libxkbcommon (C),
+        # which is unavailable to this cross-compiled job and outside Miri's
+        # reach. Run the rest of the workspace with all features, then the
+        # wayland adapter separately with its default (xkb-free) features so its
+        # mapping and reducer tests still run under Miri.
+        run: cargo miri test --workspace --exclude ui-events-wayland --locked --all-features --target s390x-unknown-linux-gnu --no-fail-fast
+
+      - name: cargo miri (ui-events-wayland)
+        run: cargo miri test -p ui-events-wayland --locked --target s390x-unknown-linux-gnu --no-fail-fast
 
   doc:
     name: cargo doc

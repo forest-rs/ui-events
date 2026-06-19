@@ -32,6 +32,14 @@
 //! millisecond event timestamps, so input shares one clock domain with frame
 //! sampling and timers.
 //!
+//! ## Resolving logical keys
+//!
+//! The keyboard reducer resolves the physical key code of every key event with
+//! no system dependencies. Enabling the non-default `xkb` feature additionally
+//! links `libxkbcommon` and uses the compositor's keymap to resolve logical key
+//! values, typed text, and the authoritative modifier set (including the lock
+//! states and Alt Graph).
+//!
 //! [`PointerState`]: ui_events::pointer::PointerState
 //! [`ui-events`]: https://docs.rs/ui-events/
 
