@@ -14,6 +14,9 @@ UI Events Wayland has not yet been published.
 
 This release has an [MSRV][] of 1.85.
 
+The crate is `no_std` (using `alloc`); enabling the `xkb` feature additionally
+requires `std`.
+
 ### Added
 
 - Platform-neutral Wayland input mapping helpers in the `mapping` module:

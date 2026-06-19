@@ -52,6 +52,14 @@
 // Targeting e.g. 32-bit means structs containing usize can give false positives for 64-bit.
 #![cfg_attr(target_pointer_width = "64", warn(clippy::trivially_copy_pass_by_ref))]
 // END LINEBENDER LINT SET
+#![no_std]
+
+extern crate alloc;
+
+// `std` is required only by the `xkb` feature, which reads the keymap file
+// descriptor through `std::fs`.
+#[cfg(feature = "xkb")]
+extern crate std;
 
 pub mod mapping;
 

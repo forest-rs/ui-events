@@ -58,6 +58,7 @@
 //! [`NamedKey::Unidentified`]: ui_events::keyboard::NamedKey::Unidentified
 //! [`Location::Standard`]: ui_events::keyboard::Location::Standard
 
+use alloc::vec::Vec;
 #[cfg(feature = "xkb")]
 use std::fs::File;
 #[cfg(feature = "xkb")]

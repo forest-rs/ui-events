@@ -28,6 +28,8 @@
 //! [`PointerState`]: ui_events::pointer::PointerState
 //! [`ui-events`]: https://docs.rs/ui-events/
 
+use alloc::vec::Vec;
+
 use ui_events::pointer::{
     PointerEvent, PointerGesture, PointerGestureEvent, PointerInfo, PointerState, PointerType,
 };

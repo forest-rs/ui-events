@@ -60,6 +60,8 @@
 //! [`PointerButton::PenEraser`]: ui_events::pointer::PointerButton::PenEraser
 //! [`ui-events`]: https://docs.rs/ui-events/
 
+use alloc::vec::Vec;
+
 use ui_events::pointer::{
     PointerButton, PointerButtonEvent, PointerEvent, PointerInfo, PointerState, PointerType,
     PointerUpdate,

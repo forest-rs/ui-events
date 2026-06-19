@@ -22,6 +22,8 @@
 //!
 //! [`PointerState`]: ui_events::pointer::PointerState
 
+use alloc::{vec, vec::Vec};
+
 use ui_events::pointer::{
     PointerButtonEvent, PointerEvent, PointerId, PointerInfo, PointerScrollEvent, PointerState,
     PointerType, PointerUpdate,

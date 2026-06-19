@@ -32,6 +32,8 @@
 //! [`KeyboardEvent`]: ui_events::keyboard::KeyboardEvent
 //! [`PointerEvent`]: ui_events::pointer::PointerEvent
 
+use alloc::vec::Vec;
+
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
 use wayland_client::WEnum;

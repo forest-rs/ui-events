@@ -26,6 +26,8 @@
 //! [`PointerType::Touch`]: ui_events::pointer::PointerType::Touch
 //! [`PointerId::PRIMARY`]: ui_events::pointer::PointerId::PRIMARY
 
+use alloc::vec::Vec;
+
 use ui_events::pointer::{
     PointerButtonEvent, PointerEvent, PointerInfo, PointerState, PointerUpdate,
 };
