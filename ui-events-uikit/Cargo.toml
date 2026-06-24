@@ -21,6 +21,7 @@ libm = ["dep:libm"]
 std = ["ui-events/std", "ui-events-apple-common/std", "dpi/std"]
 gestures = [
     "objc2-ui-kit/UIGestureRecognizer",
+    "objc2-ui-kit/UIPanGestureRecognizer",
     "objc2-ui-kit/UIPinchGestureRecognizer",
     "objc2-ui-kit/UIRotationGestureRecognizer",
 ]

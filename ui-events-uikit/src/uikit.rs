@@ -7,20 +7,25 @@
 // cfg is handled at the module declaration in lib.rs
 
 use alloc::string::ToString;
+#[cfg(feature = "gestures")]
+use objc2_core_foundation::CGPoint;
 use objc2_foundation::NSArray;
 use objc2_ui_kit::{UIEvent, UITouch, UITouchPhase, UITouchType};
 #[cfg(feature = "gestures")]
 use objc2_ui_kit::{
-    UIGestureRecognizerState, UIPinchGestureRecognizer, UIRotationGestureRecognizer,
+    UIGestureRecognizerState, UIPanGestureRecognizer, UIPinchGestureRecognizer,
+    UIRotationGestureRecognizer,
 };
 use objc2_ui_kit::{UIKey, UIPress, UIPressPhase, UIPressType};
 
 use crate::mapping as map;
+#[cfg(feature = "gestures")]
+use ui_events::ScrollDelta;
 use ui_events::keyboard::Modifiers;
 use ui_events::keyboard::{Code, Key, KeyState, KeyboardEvent, Location, NamedKey};
 use ui_events::pointer::{PointerEvent, PointerState, PointerType};
 #[cfg(feature = "gestures")]
-use ui_events::pointer::{PointerGesture, PointerGestureEvent};
+use ui_events::pointer::{PointerGesture, PointerGestureEvent, PointerScrollEvent};
 use ui_events::pointer::{PointerInfo, PointerUpdate};
 
 fn pointer_type_from_touch(touch: &UITouch) -> PointerType {
@@ -366,6 +371,78 @@ pub fn pointer_gesture_from_uirotation(
         gesture: PointerGesture::Rotate(rotation_cw),
         state,
     }))
+}
+
+/// Convert a two-finger `UIPanGestureRecognizer` into a `PointerEvent::Scroll`.
+///
+/// This is a lightweight convenience helper intended to be called from a
+/// `UIPanGestureRecognizer` callback installed by the host view.
+///
+/// Notes:
+/// - Returns `None` unless the recognizer is in `Changed` or `Ended` state and
+///   the finite pan delta is non-zero.
+/// - `previous_translation` must come from the same coordinate space as this
+///   helper uses: either the `CGPoint` returned by the previous
+///   `pointer_scroll_from_uipan` call, or a value read from
+///   `gesture.translationInView(None)`. Do not mix it with a
+///   `translationInView(Some(view))` value. Hosts should reset their stored
+///   translation when the recognizer enters `Began`, `Cancelled`, or `Failed`.
+/// - UIKit reports pan translation as cumulative point movement since the
+///   recognizer began; this helper differences it against `previous_translation`
+///   and scales the result into physical pixels.
+/// - `time_ns` is written directly to [`PointerState::time`], so callers can
+///   keep recognizer-derived scroll events in their host clock domain.
+///
+/// The returned `CGPoint` is the current cumulative translation and should be
+/// retained by the host as the next `previous_translation`.
+#[cfg(feature = "gestures")]
+pub fn pointer_scroll_from_uipan(
+    gesture: &UIPanGestureRecognizer,
+    previous_translation: CGPoint,
+    scale_factor: f64,
+    time_ns: u64,
+) -> Option<(PointerEvent, CGPoint)> {
+    let gr_state: UIGestureRecognizerState = gesture.state();
+    if !(gr_state == UIGestureRecognizerState::Changed
+        || gr_state == UIGestureRecognizerState::Ended)
+    {
+        return None;
+    }
+    let translation = gesture.translationInView(None);
+    let delta = map::pan_scroll_delta_from_cumulative_translation(
+        previous_translation.x,
+        previous_translation.y,
+        translation.x,
+        translation.y,
+        scale_factor,
+    )?;
+    let loc = gesture.locationInView(None);
+    let mut state = map::pointer_state_from_raw(
+        loc.x,
+        loc.y,
+        scale_factor,
+        0,
+        false,
+        false,
+        false,
+        false,
+        None,
+        None,
+        None,
+        None,
+        0.0,
+        0,
+    );
+    state.time = time_ns;
+
+    Some((
+        PointerEvent::Scroll(PointerScrollEvent {
+            pointer: map::pointer_info_primary_for_type(PointerType::Touch),
+            delta: ScrollDelta::PixelDelta(delta),
+            state,
+        }),
+        translation,
+    ))
 }
 
 /// Convert a `UIPress` (tvOS/Apple TV remote) into a `KeyboardEvent`.
