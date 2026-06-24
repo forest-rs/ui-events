@@ -24,7 +24,7 @@ See https://linebender.org/blog/doc-include/ for related discussion. -->
 [`web-sys`]: https://docs.rs/web-sys/
 <!-- cargo-rdme start -->
 
-This crate bridges [`web_sys`] DOM input events — Pointer Events (mouse, touch, pen),
+This crate bridges [`web_sys`](https://docs.rs/web-sys/0.3/web_sys/) DOM input events — Pointer Events (mouse, touch, pen),
 Wheel, and Keyboard — into the [`ui-events`] model.
 
 It provides lightweight helpers to convert browser events into portable
@@ -33,25 +33,25 @@ Pointer Events (mouse, touch, pen) and keyboard.
 
 ## Keyboard
 
-- [`keyboard::from_web_keyboard_event`]
-- Optional helpers: [`keyboard::from_web_keydown_event`], [`keyboard::from_web_keyup_event`]
+- [`keyboard::from_web_keyboard_event`](https://docs.rs/ui-events-web/latest/ui_events_web/keyboard/fn.from_web_keyboard_event.html)
+- Optional helpers: [`keyboard::from_web_keydown_event`](https://docs.rs/ui-events-web/latest/ui_events_web/keyboard/fn.from_web_keydown_event.html), [`keyboard::from_web_keyup_event`](https://docs.rs/ui-events-web/latest/ui_events_web/keyboard/fn.from_web_keyup_event.html)
 
 ## Pointer (Pointer Events)
 
-- One‑shot DOM conversion: [`pointer::pointer_event_from_dom_event`]
+- One‑shot DOM conversion: [`pointer::pointer_event_from_dom_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.pointer_event_from_dom_event.html)
 - Multi-touch aware DOM conversion (may return multiple events):
-  [`pointer::pointer_events_from_dom_event`]
+  [`pointer::pointer_events_from_dom_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.pointer_events_from_dom_event.html)
 - Per‑event helpers (preferred):
-  [`pointer::down_from_pointer_event`], [`pointer::up_from_pointer_event`],
-  [`pointer::move_from_pointer_event`], [`pointer::enter_from_pointer_event`],
-  [`pointer::leave_from_pointer_event`], [`pointer::cancel_from_pointer_event`]
+  [`pointer::down_from_pointer_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.down_from_pointer_event.html), [`pointer::up_from_pointer_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.up_from_pointer_event.html),
+  [`pointer::move_from_pointer_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.move_from_pointer_event.html), [`pointer::enter_from_pointer_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.enter_from_pointer_event.html),
+  [`pointer::leave_from_pointer_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.leave_from_pointer_event.html), [`pointer::cancel_from_pointer_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.cancel_from_pointer_event.html)
 - Mouse‑only helpers (legacy and less portable):
-  [`pointer::down_from_mouse_event`], [`pointer::up_from_mouse_event`],
-  [`pointer::move_from_mouse_event`], [`pointer::enter_from_mouse_event`],
-  [`pointer::leave_from_mouse_event`], [`pointer::scroll_from_wheel_event`]
-- Conversion options: [`pointer::Options`] (controls scale/coalesced/predicted)
-- Pointer capture helpers: [`pointer::set_pointer_capture`],
-  [`pointer::release_pointer_capture`], [`pointer::has_pointer_capture`]
+  [`pointer::down_from_mouse_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.down_from_mouse_event.html), [`pointer::up_from_mouse_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.up_from_mouse_event.html),
+  [`pointer::move_from_mouse_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.move_from_mouse_event.html), [`pointer::enter_from_mouse_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.enter_from_mouse_event.html),
+  [`pointer::leave_from_mouse_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.leave_from_mouse_event.html), [`pointer::scroll_from_wheel_event`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.scroll_from_wheel_event.html)
+- Conversion options: [`pointer::Options`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/struct.Options.html) (controls scale/coalesced/predicted)
+- Pointer capture helpers: [`pointer::set_pointer_capture`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.set_pointer_capture.html),
+  [`pointer::release_pointer_capture`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.release_pointer_capture.html), [`pointer::has_pointer_capture`](https://docs.rs/ui-events-web/latest/ui_events_web/pointer/fn.has_pointer_capture.html)
 
 ## Notes
 

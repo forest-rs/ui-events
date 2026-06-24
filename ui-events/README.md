@@ -47,17 +47,17 @@ For integrations, see the adapter crates:
 
 - Positions are in physical pixels (`dpi::PhysicalPosition<f64>`), with the
   Y axis increasing downward.
-- Use [`PointerState::logical_position`](pointer::PointerState::logical_position)
+- Use [`PointerState::logical_position`](https://docs.rs/ui-events/latest/ui_events/pointer/struct.PointerState.html#method.logical_position)
   to obtain logical coordinates using a scale factor.
-- Scroll deltas are expressed via [`ScrollDelta`]; see its docs for details
+- Scroll deltas are expressed via [`ScrollDelta`](https://docs.rs/ui-events/latest/ui_events/scroll/enum.ScrollDelta.html); see its docs for details
   on page/line/pixel semantics.
 
 ## Primary pointer
 
 Some interactions need a notion of a “primary” pointer (e.g. left mouse button, first touch).
-The reserved id [`PointerId::PRIMARY`](pointer::PointerId::PRIMARY) marks this.
-Helper methods like [`PointerEvent::is_primary_pointer`](pointer::PointerEvent::is_primary_pointer)
-and [`PointerInfo::is_primary_pointer`](pointer::PointerInfo::is_primary_pointer) are provided for convenience.
+The reserved id [`PointerId::PRIMARY`](https://docs.rs/ui-events/latest/ui_events/pointer/struct.PointerId.html#associatedconstant.PRIMARY) marks this.
+Helper methods like [`PointerEvent::is_primary_pointer`](https://docs.rs/ui-events/latest/ui_events/pointer/enum.PointerEvent.html#method.is_primary_pointer)
+and [`PointerInfo::is_primary_pointer`](https://docs.rs/ui-events/latest/ui_events/pointer/struct.PointerInfo.html#method.is_primary_pointer) are provided for convenience.
 
 ## Feature flags
 

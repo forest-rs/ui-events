@@ -38,8 +38,8 @@ decide which platform callbacks should become which high-level events.
 
 ## Helper Groups
 
-- Pointer identity helpers reserve [`PointerId::PRIMARY`] and map platform
-  ids through [`PLATFORM_POINTER_ID_OFFSET`].
+- Pointer identity helpers reserve `PointerId::PRIMARY` and map platform
+  ids through [`PLATFORM_POINTER_ID_OFFSET`](https://docs.rs/ui-events-apple-common/latest/ui_events_apple_common/identity/const.PLATFORM_POINTER_ID_OFFSET.html).
 - Button helpers translate platform button indexes and bitmasks into
   [`PointerButton`] and [`PointerButtons`].
 - Modifier helpers build [`Modifiers`] from platform modifier bits.
@@ -50,12 +50,11 @@ These helpers are intentionally small and value-based. AppKit and UIKit
 crates still own all Objective-C selector access and platform-specific event
 routing.
 
-[`Modifiers`]: ui_events::keyboard::Modifiers
-[`PointerButton`]: ui_events::pointer::PointerButton
-[`PointerButtons`]: ui_events::pointer::PointerButtons
-[`PointerId::PRIMARY`]: ui_events::pointer::PointerId::PRIMARY
-[`PointerState`]: ui_events::pointer::PointerState
-[`ScrollDelta`]: ui_events::ScrollDelta
+[`Modifiers`]: https://docs.rs/keyboard_types/latest/keyboard_types/modifiers/struct.Modifiers.html
+[`PointerButton`]: https://docs.rs/ui_events/latest/ui_events/pointer/buttons/enum.PointerButton.html
+[`PointerButtons`]: https://docs.rs/ui_events/latest/ui_events/pointer/buttons/struct.PointerButtons.html
+[`PointerState`]: https://docs.rs/ui_events/latest/ui_events/pointer/struct.PointerState.html
+[`ScrollDelta`]: https://docs.rs/ui_events/latest/ui_events/scroll/enum.ScrollDelta.html
 [`ui-events`]: https://docs.rs/ui-events/
 
 <!-- cargo-rdme end -->

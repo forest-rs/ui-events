@@ -80,20 +80,20 @@ edit-command protocols.
   reflects the user's natural-scrolling preference and matches the macOS
   path used by `winit`.
 - When `hasPreciseScrollingDeltas` is true, deltas map to
-  [`ScrollDelta::PixelDelta`]. Otherwise, they map to
-  [`ScrollDelta::LineDelta`].
+  `ScrollDelta::PixelDelta`. Otherwise, they map to
+  `ScrollDelta::LineDelta`.
 
 ## Gestures
 
-- Magnify gesture events map to [`PointerGesture::Pinch`](ui_events::pointer::PointerGesture::Pinch)
+- Magnify gesture events map to `PointerGesture::Pinch`
   using AppKit's per-event `magnification` delta.
 - Rotate gesture events map to
-  [`PointerGesture::Rotate`](ui_events::pointer::PointerGesture::Rotate) in
+  `PointerGesture::Rotate` in
   clockwise radians.
 
 ## Tablet Events
 
-- `NSEventType::TabletPoint` maps to [`PointerType::Pen`] with pressure,
+- `NSEventType::TabletPoint` maps to `PointerType::Pen` with pressure,
   tangential pressure, and orientation derived from AppKit tilt fractions.
 - `NSEventType::TabletProximity` maps to `PointerEvent::Enter` or
   `PointerEvent::Leave` based on `isEnteringProximity`.
@@ -111,13 +111,10 @@ edit-command protocols.
 - `pointer_event_from_nsevent_at_position`
 - `keyboard_event_from_nsevent`
 
-If you prefer, low-level mappers in [`mapping`] let you build events from
+If you prefer, low-level mappers in [`mapping`](https://docs.rs/ui-events-appkit/latest/ui_events_appkit/mapping/) let you build events from
 raw values (e.g. coordinates, button number, modifier booleans) without
 pulling in AppKit types in your own code.
 
-[`PointerType::Pen`]: ui_events::pointer::PointerType::Pen
-[`ScrollDelta::LineDelta`]: ui_events::ScrollDelta::LineDelta
-[`ScrollDelta::PixelDelta`]: ui_events::ScrollDelta::PixelDelta
 [`ui-events`]: https://docs.rs/ui-events/
 
 <!-- cargo-rdme end -->

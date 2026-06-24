@@ -34,7 +34,7 @@ live in a cross-platform workspace without pulling in platform dependencies.
 
 ## Architecture
 
-- [`mapping`] holds platform-neutral, value-based conversions from Wayland
+- [`mapping`](https://docs.rs/ui-events-wayland/latest/ui_events_wayland/mapping/) holds platform-neutral, value-based conversions from Wayland
   input primitives (evdev button codes, surface-local coordinates, axis
   values, modifier booleans) into [`ui-events`] building blocks. It is
   always compiled, performs no foreign-function calls, and references no
@@ -70,7 +70,7 @@ states and Alt Graph).
   and touch mapping use.
 - `xkb` reads the compositor keymap through `std::fs`, so it implies `std`.
 
-[`PointerState`]: ui_events::pointer::PointerState
+[`PointerState`]: https://docs.rs/ui_events/latest/ui_events/pointer/struct.PointerState.html
 [`ui-events`]: https://docs.rs/ui-events/
 
 <!-- cargo-rdme end -->

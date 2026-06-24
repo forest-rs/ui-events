@@ -28,21 +28,21 @@ This crate provides simple state containers to make input handling easier in
 immediate-mode or frame-based UIs. Instead of reacting to each event
 individually, you feed pointer and keyboard events into the state, query the
 current and per-frame information during your update, and then call
-[`InputState::clear_frame`] at the end of the frame.
+[`InputState::clear_frame`](https://docs.rs/ui-input-state/latest/ui_input_state/input_state/struct.InputState.html#method.clear_frame) at the end of the frame.
 
 ## What it provides:
 
-- [`PrimaryPointerState`]: current pointer state, coalesced and predicted motion,
+- [`PrimaryPointerState`](https://docs.rs/ui-input-state/latest/ui_input_state/primary_pointer_state/struct.PrimaryPointerState.html): current pointer state, coalesced and predicted motion,
   per-frame button transitions, and helpers for motion in physical/logical units.
-- [`KeyboardState`]: current modifiers, keys down, and per-frame key transitions.
-- [`InputState`]: a convenience container bundling both states and a per-frame clear.
+- [`KeyboardState`](https://docs.rs/ui-input-state/latest/ui_input_state/keyboard_state/struct.KeyboardState.html): current modifiers, keys down, and per-frame key transitions.
+- [`InputState`](https://docs.rs/ui-input-state/latest/ui_input_state/input_state/struct.InputState.html): a convenience container bundling both states and a per-frame clear.
 
 ## Typical lifecycle per frame:
 
 1. Receive backend events and convert them to `ui-events` types.
 2. Update `PrimaryPointerState` and `KeyboardState` with the events.
 3. Read state during your UI update (e.g. check just pressed, motion, etc.).
-4. Call [`InputState::clear_frame`] before the next frame.
+4. Call [`InputState::clear_frame`](https://docs.rs/ui-input-state/latest/ui_input_state/input_state/struct.InputState.html#method.clear_frame) before the next frame.
 
 ## Example (sketch):
 
@@ -78,8 +78,8 @@ fn end_frame(input: &mut InputState) { input.clear_frame(); }
 ## Coordinates and units
 
 Pointer positions are stored in physical pixels with a Y-down axis, as in
-`ui-events`. Use [`PrimaryPointerState::current_logical_position`] and
-[`PrimaryPointerState::logical_motion`] to work in logical units.
+`ui-events`. Use [`PrimaryPointerState::current_logical_position`](https://docs.rs/ui-input-state/latest/ui_input_state/primary_pointer_state/struct.PrimaryPointerState.html#method.current_logical_position) and
+[`PrimaryPointerState::logical_motion`](https://docs.rs/ui-input-state/latest/ui_input_state/primary_pointer_state/struct.PrimaryPointerState.html#method.logical_motion) to work in logical units.
 
 ## Features
 
