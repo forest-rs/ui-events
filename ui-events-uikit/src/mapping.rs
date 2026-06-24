@@ -3,7 +3,7 @@
 
 //! UIKit-specific mapping helpers for building `ui-events` from raw values.
 
-use dpi::PhysicalSize;
+use dpi::{PhysicalPosition, PhysicalSize};
 use ui_events::keyboard::{Code, Location, Modifiers, NamedKey};
 use ui_events::pointer::{PointerButton, PointerInfo, PointerType};
 pub use ui_events_apple_common::{
@@ -409,6 +409,48 @@ pub fn rotation_delta_from_cumulative_rotation(
     Some((previous_rotation_ccw - current_rotation_ccw) as f32)
 }
 
+/// Convert two cumulative UIKit pan translations into a physical-pixel scroll
+/// delta.
+///
+/// UIKit reports `UIPanGestureRecognizer::translationInView` as a cumulative
+/// translation in points since the recognizer began. This helper differences
+/// the current translation against a caller-provided previous translation,
+/// scales the result into physical pixels, and preserves UIKit's delta sign.
+///
+/// Returns `None` when the resulting finite delta is zero on both axes.
+pub fn pan_scroll_delta_from_cumulative_translation(
+    previous_x_points: f64,
+    previous_y_points: f64,
+    current_x_points: f64,
+    current_y_points: f64,
+    scale_factor: f64,
+) -> Option<PhysicalPosition<f64>> {
+    let scale_factor = positive_finite_or(scale_factor, 1.0);
+    let delta_x = finite_or(current_x_points - previous_x_points, 0.0) * scale_factor;
+    let delta_y = finite_or(current_y_points - previous_y_points, 0.0) * scale_factor;
+    if delta_x == 0.0 && delta_y == 0.0 {
+        return None;
+    }
+    Some(PhysicalPosition {
+        x: delta_x,
+        y: delta_y,
+    })
+}
+
+#[inline]
+fn finite_or(value: f64, fallback: f64) -> f64 {
+    if value.is_finite() { value } else { fallback }
+}
+
+#[inline]
+fn positive_finite_or(value: f64, fallback: f64) -> f64 {
+    if value.is_finite() && value > 0.0 {
+        value
+    } else {
+        fallback
+    }
+}
+
 /// Derive a normalized touch/stylus pressure in the range 0..=1.
 ///
 /// - If `active` is false, returns 0.0.
@@ -631,6 +673,34 @@ mod tests {
         assert_eq!(
             rotation_delta_from_cumulative_rotation(0.0, f64::INFINITY),
             None
+        );
+    }
+
+    #[test]
+    fn pan_scroll_delta_from_cumulative_translation_scales_delta() {
+        assert_eq!(
+            pan_scroll_delta_from_cumulative_translation(10.0, 20.0, 7.0, 24.0, 2.0),
+            Some(PhysicalPosition { x: -6.0, y: 8.0 })
+        );
+    }
+
+    #[test]
+    fn pan_scroll_delta_from_cumulative_translation_ignores_zero_or_non_finite_delta() {
+        assert_eq!(
+            pan_scroll_delta_from_cumulative_translation(10.0, 20.0, 10.0, 20.0, 2.0),
+            None
+        );
+        assert_eq!(
+            pan_scroll_delta_from_cumulative_translation(10.0, 20.0, f64::NAN, f64::INFINITY, 2.0),
+            None
+        );
+    }
+
+    #[test]
+    fn pan_scroll_delta_from_cumulative_translation_sanitizes_scale_factor() {
+        assert_eq!(
+            pan_scroll_delta_from_cumulative_translation(10.0, 20.0, 11.0, 22.0, -1.0),
+            Some(PhysicalPosition { x: 1.0, y: 2.0 })
         );
     }
 

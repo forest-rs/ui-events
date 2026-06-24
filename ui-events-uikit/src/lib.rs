@@ -47,20 +47,22 @@
 //! - Pencil hover maps to enter/move/leave when UIKit reports `RegionEntered`,
 //!   `RegionMoved`, and `RegionExited`.
 //! - Finger touches use `button: None`, matching the DOM `TouchEvent` path in
-//!   `ui-events-web`. Active stylus contacts use [`PointerButton::Primary`](ui_events::pointer::PointerButton::Primary).
+//!   `ui-events-web`. Active stylus contacts use `PointerButton::Primary`.
 //! - UIKit exposes stylus `rollAngle`, but `ui-events` currently has no roll field.
 //! - UIKit exposes estimated-property update APIs, but `ui-events` currently has no sample-revision
 //!   metadata for correcting previously emitted stylus samples.
 //! - UIKit does not expose a tangential-pressure value on `UITouch`, so
-//!   [`PointerState::tangential_pressure`](ui_events::pointer::PointerState::tangential_pressure)
-//!   remains `0.0` for this adapter.
+//!   `PointerState::tangential_pressure` remains `0.0` for this adapter.
 //!
 //! ## Gestures
 //!
-//! - Pinch gesture recognizers map to [`PointerGesture::Pinch`](ui_events::pointer::PointerGesture::Pinch)
+//! - Pinch gesture recognizers map to `PointerGesture::Pinch`
 //!   by differencing UIKit's cumulative `scale` against a caller-provided
 //!   previous scale. Rotation gesture recognizers follow the same pattern with
 //!   cumulative counterclockwise `rotation` values.
+//! - Two-finger pan gesture recognizers can map to
+//!   `PointerEvent::Scroll` by differencing UIKit's cumulative translation
+//!   against a caller-provided previous translation.
 //!
 //! ## Text Notes
 //!
@@ -79,8 +81,10 @@
 //! - `text::composition_update_event_with_utf16_ranges`
 //! - `pointer_event_from_touch_and_event`
 //! - `pointer_event_from_touch` (uncommon convenience helper)
+//! - `pointer_scroll_from_uipan` (feature: `gestures`)
 //! - `pointer_gesture_from_uipinch` (feature: `gestures`)
 //! - `pointer_gesture_from_uirotation` (feature: `gestures`)
+//! - `mapping::pan_scroll_delta_from_cumulative_translation` (feature: `gestures`)
 //! - `mapping::pinch_delta_from_cumulative_scale` (feature: `gestures`)
 //! - `mapping::rotation_delta_from_cumulative_rotation` (feature: `gestures`)
 //!
@@ -112,4 +116,6 @@ pub use uikit::{keyboard_event_from_uikey, keyboard_event_from_uipress};
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub use uikit::{pointer_event_from_touch, pointer_event_from_touch_and_event};
 #[cfg(all(any(target_os = "ios", target_os = "tvos"), feature = "gestures"))]
-pub use uikit::{pointer_gesture_from_uipinch, pointer_gesture_from_uirotation};
+pub use uikit::{
+    pointer_gesture_from_uipinch, pointer_gesture_from_uirotation, pointer_scroll_from_uipan,
+};
