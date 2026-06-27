@@ -37,5 +37,9 @@ wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 xkbcommon = { version = "0.9", optional = true, default-features = false }
 
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+# Backs the `xkb` keymap-loading regression test with a real seekable fd.
+tempfile = "3"
+
 [lints]
 workspace = true

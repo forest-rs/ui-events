@@ -58,9 +58,13 @@
 //! [`NamedKey::Unidentified`]: ui_events::keyboard::NamedKey::Unidentified
 //! [`Location::Standard`]: ui_events::keyboard::Location::Standard
 
+#[cfg(feature = "xkb")]
+use alloc::string::String;
 use alloc::vec::Vec;
 #[cfg(feature = "xkb")]
 use std::fs::File;
+#[cfg(feature = "xkb")]
+use std::os::unix::fs::FileExt;
 #[cfg(feature = "xkb")]
 use std::os::unix::io::OwnedFd;
 
@@ -141,8 +145,8 @@ impl KeyboardEventReducer {
             // Under the `xkb` feature the keymap drives logical-key and
             // authoritative-modifier resolution.
             #[cfg(feature = "xkb")]
-            Event::Keymap { format, fd, .. } => {
-                self.xkb.set_keymap(*format, fd);
+            Event::Keymap { format, fd, size } => {
+                self.xkb.set_keymap(*format, fd, *size);
                 None
             }
             #[cfg(feature = "xkb")]
@@ -302,20 +306,37 @@ impl XkbState {
     /// keyboard state from it.
     ///
     /// Only the XKB v1 text format is understood; any other format is ignored,
-    /// as is a keymap that fails to compile (the previous state is kept). The
-    /// file descriptor is duplicated and read rather than memory-mapped, so the
-    /// reducer needs no `unsafe` and leaves the caller's descriptor undisturbed.
-    fn set_keymap(&mut self, format: WEnum<KeymapFormat>, fd: &OwnedFd) {
+    /// as is a keymap that fails to compile (the previous state is kept).
+    ///
+    /// The `keymap` descriptor is meant to be mapped, not streamed: the protocol
+    /// guarantees only that the keymap occupies its first `size` bytes, and the
+    /// descriptor arrives sharing the compositor's open file description, so its
+    /// seek position is wherever the compositor left it. Rather than `mmap`
+    /// (which would need `unsafe`), read exactly `size` bytes from offset `0`
+    /// with a positional read, which neither depends on nor disturbs that shared
+    /// seek position.
+    fn set_keymap(&mut self, format: WEnum<KeymapFormat>, fd: &OwnedFd, size: u32) {
         if !matches!(format, WEnum::Value(KeymapFormat::XkbV1)) {
             return;
         }
         let Ok(fd) = fd.try_clone() else {
             return;
         };
-        let mut file = File::from(fd);
-        if let Some(keymap) = xkb::Keymap::new_from_file(
+        let file = File::from(fd);
+        let mut keymap = alloc::vec![0_u8; size as usize];
+        if file.read_exact_at(&mut keymap, 0).is_err() {
+            return;
+        }
+        // The keymap is NUL-terminated on the wire; drop it for the string.
+        if keymap.last() == Some(&0) {
+            keymap.pop();
+        }
+        let Ok(keymap) = String::from_utf8(keymap) else {
+            return;
+        };
+        if let Some(keymap) = xkb::Keymap::new_from_string(
             &self.context,
-            &mut file,
+            keymap,
             xkb::KEYMAP_FORMAT_TEXT_V1,
             xkb::KEYMAP_COMPILE_NO_FLAGS,
         ) {
@@ -638,5 +659,54 @@ mod tests {
             group: 0,
         });
         assert!(reducer.modifiers().shift());
+    }
+
+    /// A compositor delivers the keymap on a descriptor whose seek position it
+    /// leaves at end-of-file; loading must not depend on that position.
+    /// Regression test for keyboard input going dead because the keymap read
+    /// nothing.
+    #[cfg(feature = "xkb")]
+    #[test]
+    fn xkb_loads_keymap_from_descriptor_parked_at_end_of_file() {
+        use std::io::{Seek, SeekFrom, Write};
+        use std::os::fd::OwnedFd;
+
+        let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
+        let Some(keymap) = xkb::Keymap::new_from_names(
+            &context,
+            "",
+            "",
+            "us",
+            "",
+            None,
+            xkb::KEYMAP_COMPILE_NO_FLAGS,
+        ) else {
+            return; // No XKB keymap data on this system; skip.
+        };
+        // Mirror the wire format: the keymap text followed by a NUL terminator.
+        let mut bytes = keymap
+            .get_as_string(xkb::KEYMAP_FORMAT_TEXT_V1)
+            .into_bytes();
+        bytes.push(0);
+        let size = u32::try_from(bytes.len()).expect("keymap size fits in u32");
+
+        let mut file = tempfile::tempfile().expect("create a temp keymap file");
+        file.write_all(&bytes).expect("write the keymap");
+        // The position a compositor leaves the descriptor at — the bug's trigger.
+        file.seek(SeekFrom::End(0)).expect("seek to end");
+        let fd = OwnedFd::from(file);
+
+        let mut reducer = KeyboardEventReducer::default();
+        reducer.reduce(&Event::Keymap {
+            format: WEnum::Value(KeymapFormat::XkbV1),
+            fd,
+            size,
+        });
+
+        // With the keymap loaded, the physical `A` key resolves its typed text.
+        let event = reducer
+            .reduce(&key_event(KEY_A, WlKeyState::Pressed))
+            .expect("a key press should translate");
+        assert_eq!(event.key, Key::Character("a".into()));
     }
 }
