@@ -21,6 +21,10 @@
 //! `PointerEvent::Enter` followed by the `Move`, and a single `WM_TOUCH` message can carry
 //! more than one simultaneous touch point).
 //!
+//! Text input uses the immediate Win32 message model: `WM_CHAR` supplies committed text and
+//! IMM32 `WM_IME_*` messages supply composition updates. This crate does not implement a
+//! host-integrated TSF text store or own editor state.
+//!
 //! This crate also handles some side-effecting Win32 calls:
 //!   - It calls `TrackMouseEvent` on mouse enter so that `WM_MOUSELEAVE` is delivered.
 //!   - It calls `SetCapture`/`ReleaseCapture` around button presses so that a drag that leaves

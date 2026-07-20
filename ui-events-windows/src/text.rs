@@ -12,6 +12,38 @@ use windows_sys::Win32::UI::Input::Ime::{
     GCS_RESULTSTR, HIMC, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext,
 };
 
+/// Incrementally decodes the UTF-16 code units delivered by `WM_CHAR`.
+#[derive(Debug, Default)]
+pub(crate) struct WmCharDecoder {
+    pending_high_surrogate: Option<u16>,
+}
+
+impl WmCharDecoder {
+    /// Decode one `WM_CHAR` UTF-16 code unit.
+    pub(crate) fn push(&mut self, code_unit: u16) -> Option<String> {
+        if (0xd800..=0xdbff).contains(&code_unit) {
+            self.pending_high_surrogate = Some(code_unit);
+            return None;
+        }
+
+        if (0xdc00..=0xdfff).contains(&code_unit) {
+            let high = self.pending_high_surrogate.take()?;
+            return String::from_utf16(&[high, code_unit]).ok();
+        }
+
+        self.pending_high_surrogate = None;
+        char::from_u32(u32::from(code_unit)).map(|ch| ch.to_string())
+    }
+}
+
+/// Translate one Unicode-window `WM_CHAR` code unit into committed text.
+pub(crate) fn from_wm_char(decoder: &mut WmCharDecoder, code_unit: u16) -> Option<TextInputEvent> {
+    let text = decoder.push(code_unit)?;
+    text.chars()
+        .all(|ch| !ch.is_control())
+        .then(|| TextInputEvent::Insert(TextInsertEvent::new(text)))
+}
+
 /// A short-lived handle to a window's input context, used to read the in-progress
 /// IME composition string.
 struct ImeContext<'m> {
@@ -25,15 +57,14 @@ impl<'m> ImeContext<'m> {
     ///
     /// `hwnd` must be a valid window handle for the window that received the `WM_IME_*` message
     /// currently being processed.
-    unsafe fn current(hwnd: HWND, msg: &LPARAM) -> Self {
-        let _ = msg;
+    unsafe fn current(hwnd: HWND) -> Option<Self> {
         // SAFETY: `hwnd` is a valid window handle.
         let himc = unsafe { ImmGetContext(hwnd) };
-        Self {
+        (!himc.is_null()).then_some(Self {
             hwnd,
             himc,
             _lifetime: PhantomData,
-        }
+        })
     }
 
     /// Get the in-progress (not yet committed) composition string, along with the byte-offset range
@@ -152,28 +183,62 @@ impl<'m> Drop for ImeContext<'m> {
     reason = "System provided value, should be no data loss."
 )]
 pub(crate) unsafe fn from_imm(hwnd: HWND, lparam: LPARAM) -> Option<Vec<TextInputEvent>> {
-    // SAFETY: `hwnd` is a valid window handle and `lparam` is a message it received.
-    let ctx = unsafe { ImeContext::current(hwnd, &lparam) };
+    // SAFETY: `hwnd` is a valid window handle.
+    let ctx = unsafe { ImeContext::current(hwnd) }?;
     let flags = lparam as u32;
+    let mut events = Vec::with_capacity(2);
 
     if flags & GCS_RESULTSTR != 0 {
-        let text = ctx.get_composed_text()?;
-        (!text.is_empty()).then(|| vec![TextInputEvent::Insert(TextInsertEvent::new(text))])
-    } else if flags & GCS_COMPSTR != 0 {
-        let (text, first, last) = ctx.get_composing_text_and_cursor()?;
-        if text.is_empty() {
-            return Some(vec![TextInputEvent::CompositionEnd]);
+        if let Some(text) = ctx.get_composed_text().filter(|text| !text.is_empty()) {
+            events.push(TextInputEvent::Insert(TextInsertEvent::new(text)));
         }
+    }
 
-        let mut state = CompositionState::new(text);
-        if let Some((start, end)) = first.zip(last) {
-            state = state.try_with_selection(TextRange::new(
-                u32::try_from(start).ok()?,
-                u32::try_from(end).ok()?,
-            ))?;
+    if flags & GCS_COMPSTR != 0 {
+        if let Some((text, first, last)) = ctx.get_composing_text_and_cursor() {
+            if text.is_empty() {
+                events.push(TextInputEvent::CompositionEnd);
+            } else {
+                let mut state = CompositionState::new(text);
+                if let Some((start, end)) = first.zip(last) {
+                    let selection = u32::try_from(start)
+                        .ok()
+                        .zip(u32::try_from(end).ok())
+                        .and_then(|(start, end)| {
+                            state.clone().try_with_selection(TextRange::new(start, end))
+                        });
+                    if let Some(selected) = selection {
+                        state = selected;
+                    }
+                }
+                events.push(TextInputEvent::CompositionUpdate(state));
+            }
         }
-        Some(vec![TextInputEvent::CompositionUpdate(state)])
-    } else {
-        None
+    }
+
+    (!events.is_empty()).then_some(events)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wm_char_decodes_surrogate_pairs() {
+        let mut decoder = WmCharDecoder::default();
+
+        assert_eq!(decoder.push(0xd83d), None);
+        assert_eq!(decoder.push(0xde42).as_deref(), Some("🙂"));
+    }
+
+    #[test]
+    fn wm_char_filters_editing_control_characters() {
+        let mut decoder = WmCharDecoder::default();
+
+        assert_eq!(from_wm_char(&mut decoder, u16::from(b'\x08')), None);
+        assert_eq!(
+            from_wm_char(&mut decoder, u16::from(b'a')),
+            Some(TextInputEvent::Insert(TextInsertEvent::new("a")))
+        );
     }
 }

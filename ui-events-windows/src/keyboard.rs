@@ -21,6 +21,12 @@ struct KeyLparam {
     is_repeat: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ModifierSnapshot {
+    modifiers: Modifiers,
+    alt_graph: bool,
+}
+
 impl KeyLparam {
     #[expect(
         clippy::cast_possible_truncation,
@@ -238,13 +244,25 @@ pub(crate) fn code_from_scancode(scancode: u16) -> Code {
 }
 
 /// Convert a virtual-key code into a [`Location`].
-fn get_location(vkey: VIRTUAL_KEY, extended: bool) -> Location {
+fn get_location(vkey: VIRTUAL_KEY, scancode: u8, extended: bool) -> Location {
     // Use the native VIRTUAL_KEY and the extended flag to cover most cases
     // This is taken from the `druid` GUI library, specifically
     // druid-shell/src/platform/windows/keyboard.rs
     match vkey {
         VK_LSHIFT | VK_LCONTROL | VK_LMENU | VK_LWIN => Location::Left,
         VK_RSHIFT | VK_RCONTROL | VK_RMENU | VK_RWIN => Location::Right,
+        VK_SHIFT => match scancode {
+            0x2a => Location::Left,
+            0x36 => Location::Right,
+            _ => Location::Standard,
+        },
+        VK_CONTROL | VK_MENU => {
+            if extended {
+                Location::Right
+            } else {
+                Location::Left
+            }
+        }
         VK_RETURN if extended => Location::Numpad,
         VK_INSERT | VK_DELETE | VK_END | VK_DOWN | VK_NEXT | VK_LEFT | VK_CLEAR | VK_RIGHT
         | VK_HOME | VK_UP | VK_PRIOR => {
@@ -262,7 +280,7 @@ fn get_location(vkey: VIRTUAL_KEY, extended: bool) -> Location {
 }
 
 /// Convert a virtual-key code to a [`NamedKey`], for non-printable keys.
-fn named_key_from_vkey(key: VIRTUAL_KEY, modifiers: Modifiers) -> Option<NamedKey> {
+fn named_key_from_vkey(key: VIRTUAL_KEY, location: Location, alt_graph: bool) -> Option<NamedKey> {
     // Reference: https://learn.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes
     use windows_sys::Win32::System::SystemServices::{LANG_JAPANESE, LANG_KOREAN};
     use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
@@ -281,7 +299,7 @@ fn named_key_from_vkey(key: VIRTUAL_KEY, modifiers: Modifiers) -> Option<NamedKe
         VK_RETURN => NamedKey::Enter,
         VK_SHIFT | VK_LSHIFT | VK_RSHIFT => NamedKey::Shift,
         VK_CONTROL | VK_LCONTROL | VK_RCONTROL => NamedKey::Control,
-        VK_RMENU if modifiers.contains(Modifiers::CONTROL | Modifiers::ALT) => NamedKey::AltGraph,
+        VK_MENU | VK_RMENU if location == Location::Right && alt_graph => NamedKey::AltGraph,
         VK_MENU | VK_LMENU | VK_RMENU => NamedKey::Alt,
         VK_PAUSE => NamedKey::Pause,
         VK_CAPITAL => NamedKey::CapsLock,
@@ -370,28 +388,47 @@ fn named_key_from_vkey(key: VIRTUAL_KEY, modifiers: Modifiers) -> Option<NamedKe
     })
 }
 
+fn modifier_snapshot(
+    shift: bool,
+    control: bool,
+    alt: bool,
+    meta: bool,
+    right_alt: bool,
+) -> ModifierSnapshot {
+    let alt_graph = control && right_alt;
+    let mut modifiers = Modifiers::empty();
+    modifiers.set(Modifiers::SHIFT, shift);
+    modifiers.set(Modifiers::CONTROL, control && !alt_graph);
+    modifiers.set(Modifiers::ALT, alt && !alt_graph);
+    modifiers.set(Modifiers::META, meta);
+    ModifierSnapshot {
+        modifiers,
+        alt_graph,
+    }
+}
+
 /// Query the live state of the modifier keys via `GetKeyState`.
 pub(crate) fn current_modifiers() -> Modifiers {
+    current_modifier_snapshot(false).modifiers
+}
+
+fn current_modifier_snapshot(right_alt_release: bool) -> ModifierSnapshot {
     let pressed = |vkey: VIRTUAL_KEY| {
         // SAFETY: `GetKeyState` is a pure query function. Any VIRTUAL_KEY is safe to pass.
         let state = unsafe { GetKeyState(vkey as i32) };
         state as u16 & 0x8000 != 0
     };
 
-    // `AltGr` is reported by Windows as a fake `Ctrl`+`Alt` press
-    // When the right `Alt` key is down we filter that synthetic state out of `Ctrl` and `Alt`
-    let filter_out_altgr = pressed(VK_RMENU);
-
-    let mut modifiers = Modifiers::empty();
-    modifiers.set(Modifiers::SHIFT, pressed(VK_SHIFT));
-    modifiers.set(Modifiers::CONTROL, pressed(VK_CONTROL) && !filter_out_altgr);
-    modifiers.set(Modifiers::ALT, pressed(VK_MENU) && !filter_out_altgr);
-    modifiers.set(Modifiers::META, pressed(VK_LWIN) || pressed(VK_RWIN));
-
-    modifiers
+    modifier_snapshot(
+        pressed(VK_SHIFT),
+        pressed(VK_CONTROL),
+        pressed(VK_MENU),
+        pressed(VK_LWIN) || pressed(VK_RWIN),
+        pressed(VK_RMENU) || right_alt_release,
+    )
 }
 
-/// Resolve the printable character produced by a virtual key,
+/// Resolve the printable text produced by a virtual key,
 /// respecting the active keyboard layout and the live modifier state.
 ///
 /// Returns `None` when the virtual key does not produce a character
@@ -400,12 +437,14 @@ pub(crate) fn current_modifiers() -> Modifiers {
     clippy::cast_possible_truncation,
     reason = "Constant value, no data loss."
 )]
-fn char_from_vkey(vkey: VIRTUAL_KEY, scancode: u32) -> Option<char> {
+fn text_from_vkey(vkey: VIRTUAL_KEY, scancode: u32) -> Option<String> {
+    const DONT_CHANGE_KEYBOARD_STATE: u32 = 1 << 2;
+
     let mut key_state = [0; 256];
     // SAFETY: `key_state` is a valid, correctly sized buffer for `GetKeyboardState`.
     unsafe { GetKeyboardState(key_state.as_mut_ptr()) };
 
-    let mut buf = [0; 4];
+    let mut buf = [0; 8];
     // SAFETY: `key_state` and `buf` are valid buffers of the sizes passed in.
     let result = unsafe {
         ToUnicode(
@@ -414,20 +453,20 @@ fn char_from_vkey(vkey: VIRTUAL_KEY, scancode: u32) -> Option<char> {
             key_state.as_ptr(),
             buf.as_mut_ptr(),
             buf.len() as i32,
-            0,
+            DONT_CHANGE_KEYBOARD_STATE,
         )
     };
 
     // A negative result means the key is a dead key.
     // The unaccented character it would otherwise produce is still written into `buf`.
     let len = if result < 0 { 1 } else { result as usize };
-    if len == 0 || len > buf.len() {
-        return None;
-    }
+    decode_to_unicode_result(&buf, len)
+}
 
-    char::decode_utf16(buf.into_iter().take(len))
-        .next()
-        .and_then(Result::ok)
+fn decode_to_unicode_result(buf: &[u16], len: usize) -> Option<String> {
+    (len != 0 && len <= buf.len())
+        .then(|| String::from_utf16(&buf[..len]).ok())
+        .flatten()
 }
 
 /// Convert a `WM_*KEY*` message into a [`KeyboardEvent`].
@@ -435,7 +474,12 @@ fn char_from_vkey(vkey: VIRTUAL_KEY, scancode: u32) -> Option<char> {
     clippy::cast_possible_truncation,
     reason = "System provided value, should be no data loss."
 )]
-pub(crate) fn from_win32(wparam: WPARAM, lparam: LPARAM, state: KeyState) -> KeyboardEvent {
+pub(crate) fn from_win32(
+    wparam: WPARAM,
+    lparam: LPARAM,
+    state: KeyState,
+    is_composing: bool,
+) -> KeyboardEvent {
     let lparam = KeyLparam::destructure(lparam);
     let key = wparam as VIRTUAL_KEY;
 
@@ -447,13 +491,15 @@ pub(crate) fn from_win32(wparam: WPARAM, lparam: LPARAM, state: KeyState) -> Key
         .unwrap_or_else(|| unsafe { MapVirtualKeyW(key as u32, MAPVK_VK_TO_VSC) } as u16);
 
     let code = code_from_scancode(scancode);
-    let location = get_location(key, lparam.extended);
-    let modifiers = current_modifiers();
+    let location = get_location(key, lparam.scancode, lparam.extended);
+    let modifier_snapshot = current_modifier_snapshot(
+        state == KeyState::Up && key == VK_MENU && location == Location::Right,
+    );
 
-    let key = match named_key_from_vkey(key, modifiers) {
+    let key = match named_key_from_vkey(key, location, modifier_snapshot.alt_graph) {
         Some(named) => Key::Named(named),
-        None => match char_from_vkey(key, scancode as u32) {
-            Some(c) => Key::Character(c.to_string()),
+        None => match text_from_vkey(key, scancode as u32) {
+            Some(text) => Key::Character(text),
             None => Key::Named(NamedKey::Unidentified),
         },
     };
@@ -463,8 +509,60 @@ pub(crate) fn from_win32(wparam: WPARAM, lparam: LPARAM, state: KeyState) -> Key
         key,
         code,
         location,
-        modifiers,
+        modifiers: modifier_snapshot.modifiers,
         repeat: lparam.is_repeat,
-        is_composing: false,
+        is_composing,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_modifier_vkeys_preserve_side() {
+        assert_eq!(get_location(VK_SHIFT, 0x2a, false), Location::Left);
+        assert_eq!(get_location(VK_SHIFT, 0x36, false), Location::Right);
+        assert_eq!(get_location(VK_CONTROL, 0x1d, false), Location::Left);
+        assert_eq!(get_location(VK_CONTROL, 0x1d, true), Location::Right);
+        assert_eq!(get_location(VK_MENU, 0x38, false), Location::Left);
+        assert_eq!(get_location(VK_MENU, 0x38, true), Location::Right);
+    }
+
+    #[test]
+    fn alt_graph_filters_synthetic_control_and_alt() {
+        let snapshot = modifier_snapshot(false, true, true, false, true);
+
+        assert!(snapshot.alt_graph);
+        assert!(!snapshot.modifiers.contains(Modifiers::CONTROL));
+        assert!(!snapshot.modifiers.contains(Modifiers::ALT));
+        assert_eq!(
+            named_key_from_vkey(VK_MENU, Location::Right, snapshot.alt_graph),
+            Some(NamedKey::AltGraph)
+        );
+    }
+
+    #[test]
+    fn right_alt_without_synthetic_control_remains_alt() {
+        let snapshot = modifier_snapshot(false, false, true, false, true);
+
+        assert!(!snapshot.alt_graph);
+        assert!(snapshot.modifiers.contains(Modifiers::ALT));
+        assert_eq!(
+            named_key_from_vkey(VK_MENU, Location::Right, snapshot.alt_graph),
+            Some(NamedKey::Alt)
+        );
+    }
+
+    #[test]
+    fn to_unicode_keeps_all_utf16_units() {
+        assert_eq!(
+            decode_to_unicode_result(&[u16::from(b's'), u16::from(b's')], 2).as_deref(),
+            Some("ss")
+        );
+        assert_eq!(
+            decode_to_unicode_result(&[0xd83d, 0xde42], 2).as_deref(),
+            Some("🙂")
+        );
     }
 }

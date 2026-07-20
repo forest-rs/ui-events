@@ -24,7 +24,7 @@ use windows_sys::Win32::UI::Input::Touch::{
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetMessageExtraInfo, SPI_GETWHEELSCROLLCHARS, SPI_GETWHEELSCROLLLINES, SystemParametersInfoW,
-    WHEEL_DELTA, WM_CAPTURECHANGED, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION,
+    WHEEL_DELTA, WM_CAPTURECHANGED, WM_CHAR, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION,
     WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
     WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP,
     WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_XBUTTONDOWN, WM_XBUTTONUP,
@@ -47,12 +47,13 @@ const PRIMARY_MOUSE: PointerInfo = PointerInfo {
 ///
 /// This handles:
 ///  - `WM_KEYDOWN`/`WM_KEYUP`/`WM_SYSKEYDOWN`/`WM_SYSKEYUP`
+///  - `WM_CHAR`
 ///  - `WM_IME_STARTCOMPOSITION`/`WM_IME_COMPOSITION`/`WM_IME_ENDCOMPOSITION`
 ///  - `WM_TOUCH`
 ///  - `WM_LBUTTONDOWN`/`WM_LBUTTONUP`/`WM_RBUTTONDOWN`/`WM_RBUTTONUP`/
 ///    `WM_MBUTTONDOWN`/`WM_MBUTTONUP`/`WM_XBUTTONDOWN`/`WM_XBUTTONUP`
 ///  - `WM_MOUSEWHEEL`/`WM_MOUSEHWHEEL`
-///  - `WM_MOUSEMOVE`/`WM_MOUSELEAVE`
+///  - `WM_MOUSEMOVE`/`WM_MOUSELEAVE`/`WM_CAPTURECHANGED`
 #[derive(Debug)]
 pub struct WindowMessageReducer {
     /// Window whose messages this reducer processes.
@@ -61,8 +62,10 @@ pub struct WindowMessageReducer {
     scale_factor: f64,
     /// State of the primary mouse pointer.
     primary_state: PointerState,
-    /// Whether the window currently has a non-empty IME composition.
+    /// Whether the window currently has an active IME composition session.
     ime_composing: bool,
+    /// Decoder state for UTF-16 surrogate pairs split across `WM_CHAR` messages.
+    wm_char_decoder: text::WmCharDecoder,
     /// Whether the cursor is currently known to be inside the window's client area,
     /// used to synthesize [`PointerEvent::Enter`] and to know when to re-arm `TrackMouseEvent`.
     mouse_in_window: bool,
@@ -84,6 +87,7 @@ impl WindowMessageReducer {
             scale_factor,
             primary_state: PointerState::default(),
             ime_composing: false,
+            wm_char_decoder: text::WmCharDecoder::default(),
             mouse_in_window: false,
             counter: Vec::new(),
         }
@@ -105,6 +109,7 @@ impl WindowMessageReducer {
                 | WM_IME_STARTCOMPOSITION
                 | WM_IME_ENDCOMPOSITION
                 | WM_IME_COMPOSITION
+                | WM_CHAR
                 | WM_MOUSEMOVE
                 | WM_MOUSELEAVE
                 | WM_LBUTTONDOWN
@@ -174,29 +179,31 @@ impl WindowMessageReducer {
                 wparam,
                 lparam,
                 KeyState::Down,
+                self.ime_composing,
             ))],
 
             WM_KEYUP | WM_SYSKEYUP => vec![InputEvent::Keyboard(keyboard::from_win32(
                 wparam,
                 lparam,
                 KeyState::Up,
+                self.ime_composing,
             ))],
-            WM_IME_STARTCOMPOSITION => Vec::new(),
+            WM_CHAR => text::from_wm_char(&mut self.wm_char_decoder, wparam as u16)
+                .map(|event| InputEvent::Text(vec![event]))
+                .into_iter()
+                .collect(),
+            WM_IME_STARTCOMPOSITION => {
+                self.ime_composing = true;
+                Vec::new()
+            }
             WM_IME_ENDCOMPOSITION => self.end_ime_composition().into_iter().collect(),
             WM_IME_COMPOSITION => {
                 // SAFETY: `hwnd` is the window that received this message.
                 let events = unsafe { text::from_imm(self.hwnd, lparam) };
-                events.map_or_else(Vec::new, |mut events| {
-                    let is_commit = matches!(events.first(), Some(TextInputEvent::Insert(_)));
-                    let was_composing = mem::replace(
-                        &mut self.ime_composing,
-                        matches!(events.first(), Some(TextInputEvent::CompositionUpdate(_))),
-                    );
-                    if was_composing && is_commit {
-                        events.insert(0, TextInputEvent::CompositionEnd);
-                    }
-                    vec![InputEvent::Text(events)]
-                })
+                events
+                    .map(|events| InputEvent::Text(self.normalize_ime_events(events)))
+                    .into_iter()
+                    .collect()
             }
             WM_MOUSEMOVE => {
                 let mut out = Vec::with_capacity(2);
@@ -429,6 +436,32 @@ impl WindowMessageReducer {
             .then(|| InputEvent::Text(vec![TextInputEvent::CompositionEnd]))
     }
 
+    fn normalize_ime_events(&mut self, events: Vec<TextInputEvent>) -> Vec<TextInputEvent> {
+        let has_insert = events
+            .iter()
+            .any(|event| matches!(event, TextInputEvent::Insert(_)));
+        let has_update = events
+            .iter()
+            .any(|event| matches!(event, TextInputEvent::CompositionUpdate(_)));
+        let has_explicit_end = events
+            .iter()
+            .any(|event| matches!(event, TextInputEvent::CompositionEnd));
+        let should_end_before_commit = (self.ime_composing && has_insert) || has_explicit_end;
+
+        let mut normalized =
+            Vec::with_capacity(events.len() + usize::from(should_end_before_commit));
+        if should_end_before_commit {
+            normalized.push(TextInputEvent::CompositionEnd);
+        }
+        normalized.extend(
+            events
+                .into_iter()
+                .filter(|event| !matches!(event, TextInputEvent::CompositionEnd)),
+        );
+        self.ime_composing = has_update;
+        normalized
+    }
+
     fn check_time_monotonic_and_set(&mut self, time: u64) {
         let previous = mem::replace(&mut self.primary_state.time, time);
         debug_assert!(
@@ -653,6 +686,7 @@ fn wheel_preference(param: u32) -> u32 {
 mod tests {
     use super::*;
     use ui_events::pointer::PointerButton;
+    use ui_events::text::{CompositionState, TextInsertEvent};
     use windows_sys::Win32::UI::WindowsAndMessaging::WM_APP;
 
     fn test_reducer() -> WindowMessageReducer {
@@ -661,6 +695,7 @@ mod tests {
             scale_factor: 1.0,
             primary_state: PointerState::default(),
             ime_composing: false,
+            wm_char_decoder: text::WmCharDecoder::default(),
             mouse_in_window: false,
             counter: Vec::new(),
         }
@@ -688,6 +723,7 @@ mod tests {
     fn recognized_message_table_matches_disposition_table() {
         assert!(WindowMessageReducer::handles_message(WM_TOUCH));
         assert!(WindowMessageReducer::handles_message(WM_SYSKEYDOWN));
+        assert!(WindowMessageReducer::handles_message(WM_CHAR));
         assert!(WindowMessageReducer::handles_message(WM_MOUSELEAVE));
         assert!(WindowMessageReducer::handles_message(WM_CAPTURECHANGED));
         assert!(!WindowMessageReducer::handles_message(WM_APP));
@@ -760,5 +796,25 @@ mod tests {
     #[test]
     fn disabled_wheel_preference_produces_no_scroll() {
         assert_eq!(wheel_delta(WheelAxis::Vertical, 1.0, 0), None);
+    }
+
+    #[test]
+    fn combined_ime_commit_and_update_preserve_both_sides() {
+        let mut reducer = test_reducer();
+        reducer.ime_composing = true;
+        let events = reducer.normalize_ime_events(vec![
+            TextInputEvent::Insert(TextInsertEvent::new("に")),
+            TextInputEvent::CompositionUpdate(CompositionState::new("ほ")),
+        ]);
+
+        assert!(matches!(
+            events.as_slice(),
+            [
+                TextInputEvent::CompositionEnd,
+                TextInputEvent::Insert(insert),
+                TextInputEvent::CompositionUpdate(update),
+            ] if insert.text == "に" && update.text == "ほ"
+        ));
+        assert!(reducer.ime_composing);
     }
 }
