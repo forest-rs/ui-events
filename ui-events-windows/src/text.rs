@@ -5,12 +5,16 @@
 
 use std::{marker::PhantomData, ptr::null_mut};
 
+use dpi::{Position, Size};
 use ui_events::text::{CompositionState, TextInputEvent, TextInsertEvent, TextRange};
-use windows_sys::Win32::Foundation::{HWND, LPARAM};
+use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, RECT};
 use windows_sys::Win32::UI::Input::Ime::{
     ATTR_TARGET_CONVERTED, ATTR_TARGET_NOTCONVERTED, GCS_COMPATTR, GCS_COMPSTR, GCS_CURSORPOS,
-    GCS_RESULTSTR, HIMC, ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext,
+    GCS_RESULTSTR, HIMC, IACE_CHILDREN, IACE_DEFAULT, ImmAssociateContextEx,
+    ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext, ImmSetCandidateWindow,
+    ImmSetCompositionWindow,
 };
+use windows_sys::Win32::UI::Input::Ime::{CANDIDATEFORM, CFS_EXCLUDE, CFS_POINT, COMPOSITIONFORM};
 
 /// Incrementally decodes the UTF-16 code units delivered by `WM_CHAR`.
 #[derive(Debug, Default)]
@@ -162,6 +166,15 @@ impl<'m> ImeContext<'m> {
             buf
         })
     }
+
+    fn set_cursor_area(&self, position: Position, size: Size, scale_factor: f64) {
+        let (composition, candidate) = ime_forms(position, size, scale_factor);
+        // SAFETY: `self.himc` is valid and both forms live for the duration of their calls.
+        unsafe {
+            ImmSetCompositionWindow(self.himc, &composition);
+            ImmSetCandidateWindow(self.himc, &candidate);
+        }
+    }
 }
 
 impl<'m> Drop for ImeContext<'m> {
@@ -169,6 +182,82 @@ impl<'m> Drop for ImeContext<'m> {
         // SAFETY: `self.himc` was obtained from a matching `ImmGetContext` call with `self.hwnd`.
         unsafe { ImmReleaseContext(self.hwnd, self.himc) };
     }
+}
+
+/// Associate or disassociate the window's default IMM32 input context.
+///
+/// # Safety
+///
+/// `hwnd` must be a valid window handle owned by the calling thread.
+pub(crate) unsafe fn set_ime_allowed(hwnd: HWND, allowed: bool) -> bool {
+    let flags = if allowed { IACE_DEFAULT } else { IACE_CHILDREN };
+    // SAFETY: `hwnd` is valid. A null `HIMC` is required when restoring the default context and
+    // disassociates the context when applying `IACE_CHILDREN`.
+    unsafe { ImmAssociateContextEx(hwnd, null_mut(), flags) != 0 }
+}
+
+/// Set the client-space area used for IMM32 composition and candidate UI.
+///
+/// # Safety
+///
+/// `hwnd` must be a valid window handle owned by the calling thread.
+pub(crate) unsafe fn set_ime_cursor_area(
+    hwnd: HWND,
+    position: Position,
+    size: Size,
+    scale_factor: f64,
+) {
+    // SAFETY: `hwnd` is valid.
+    if let Some(ctx) = unsafe { ImeContext::current(hwnd) } {
+        ctx.set_cursor_area(position, size, scale_factor);
+    }
+}
+
+/// Read a committed string that remains available at the end of a composition.
+///
+/// # Safety
+///
+/// `hwnd` must be a valid handle to the window receiving `WM_IME_ENDCOMPOSITION`.
+pub(crate) unsafe fn composed_text(hwnd: HWND) -> Option<String> {
+    // SAFETY: `hwnd` is valid.
+    unsafe { ImeContext::current(hwnd) }?.get_composed_text()
+}
+
+pub(crate) fn ime_forms(
+    position: Position,
+    size: Size,
+    scale_factor: f64,
+) -> (COMPOSITIONFORM, CANDIDATEFORM) {
+    let position = position.to_physical::<i32>(scale_factor);
+    let size = size.to_physical::<i32>(scale_factor);
+    let right = position.x.saturating_add(size.width.max(0));
+    let bottom = position.y.saturating_add(size.height.max(0));
+    let area = RECT {
+        left: position.x,
+        top: position.y,
+        right,
+        bottom,
+    };
+
+    (
+        COMPOSITIONFORM {
+            dwStyle: CFS_POINT,
+            ptCurrentPos: POINT {
+                x: position.x,
+                y: bottom,
+            },
+            rcArea: RECT::default(),
+        },
+        CANDIDATEFORM {
+            dwIndex: 0,
+            dwStyle: CFS_EXCLUDE,
+            ptCurrentPos: POINT {
+                x: position.x,
+                y: position.y,
+            },
+            rcArea: area,
+        },
+    )
 }
 
 /// Convert a `WM_IME_COMPOSITION` message's composition data into text input events.

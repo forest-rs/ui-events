@@ -3,18 +3,22 @@
 
 //! [`WindowMessageReducer`]. See the crate-level documentation for an overview.
 
-use std::mem;
+use std::{error::Error, fmt, mem};
 
-use dpi::PhysicalPosition;
+use dpi::{PhysicalPosition, Position, Size};
 use ui_events::keyboard::{KeyState, KeyboardEvent};
 use ui_events::pointer::{
     PointerButtonEvent, PointerEvent, PointerId, PointerInfo, PointerScrollEvent, PointerState,
     PointerType, PointerUpdate,
 };
-use ui_events::{ScrollDelta, text::TextInputEvent};
+use ui_events::{
+    ScrollDelta,
+    text::{TextInputEvent, TextInsertEvent},
+};
 use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
 use windows_sys::Win32::UI::Controls::{HOVER_DEFAULT, WM_MOUSELEAVE};
+use windows_sys::Win32::UI::Input::Ime::ISC_SHOWUICOMPOSITIONWINDOW;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
 };
@@ -25,9 +29,9 @@ use windows_sys::Win32::UI::Input::Touch::{
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GetMessageExtraInfo, SPI_GETWHEELSCROLLCHARS, SPI_GETWHEELSCROLLLINES, SystemParametersInfoW,
     WHEEL_DELTA, WM_CAPTURECHANGED, WM_CHAR, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION,
-    WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
-    WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP,
-    WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
 use crate::{keyboard, pointer, text};
@@ -48,7 +52,8 @@ const PRIMARY_MOUSE: PointerInfo = PointerInfo {
 /// This handles:
 ///  - `WM_KEYDOWN`/`WM_KEYUP`/`WM_SYSKEYDOWN`/`WM_SYSKEYUP`
 ///  - `WM_CHAR`
-///  - `WM_IME_STARTCOMPOSITION`/`WM_IME_COMPOSITION`/`WM_IME_ENDCOMPOSITION`
+///  - `WM_IME_SETCONTEXT`/`WM_IME_STARTCOMPOSITION`/`WM_IME_COMPOSITION`/
+///    `WM_IME_ENDCOMPOSITION`
 ///  - `WM_TOUCH`
 ///  - `WM_LBUTTONDOWN`/`WM_LBUTTONUP`/`WM_RBUTTONDOWN`/`WM_RBUTTONUP`/
 ///    `WM_MBUTTONDOWN`/`WM_MBUTTONUP`/`WM_XBUTTONDOWN`/`WM_XBUTTONUP`
@@ -63,7 +68,13 @@ pub struct WindowMessageReducer {
     /// State of the primary mouse pointer.
     primary_state: PointerState,
     /// Whether the window currently has an active IME composition session.
-    ime_composing: bool,
+    ime_active: bool,
+    /// Whether a composition update has installed preedit text in the editor.
+    ime_preediting: bool,
+    /// Whether IMM32 text input is enabled for this window.
+    ime_allowed: bool,
+    /// Last requested client-space area for IMM32 composition and candidate UI.
+    ime_cursor_area: Option<(Position, Size)>,
     /// Decoder state for UTF-16 surrogate pairs split across `WM_CHAR` messages.
     wm_char_decoder: text::WmCharDecoder,
     /// Whether the cursor is currently known to be inside the window's client area,
@@ -81,12 +92,16 @@ impl WindowMessageReducer {
     /// # Safety
     ///
     /// `hwnd` must remain a valid window handle until the reducer is dropped or no longer used.
+    /// The reducer must be used on the thread that owns that window.
     pub unsafe fn new(hwnd: HWND, scale_factor: f64) -> Self {
         Self {
             hwnd,
             scale_factor,
             primary_state: PointerState::default(),
-            ime_composing: false,
+            ime_active: false,
+            ime_preediting: false,
+            ime_allowed: true,
+            ime_cursor_area: None,
             wm_char_decoder: text::WmCharDecoder::default(),
             mouse_in_window: false,
             counter: Vec::new(),
@@ -96,6 +111,59 @@ impl WindowMessageReducer {
     /// Update the physical-pixels-per-logical-pixel scale for this window.
     pub fn set_scale_factor(&mut self, scale_factor: f64) {
         self.scale_factor = scale_factor;
+        self.apply_ime_cursor_area();
+    }
+
+    /// Enable or disable IMM32 text input for this window.
+    ///
+    /// This restores the window's default input context when `allowed` is `true` and disassociates
+    /// it when `allowed` is `false`. Call this when a text-editing control gains or loses focus.
+    ///
+    /// Disabling an active composition returns a [`TextInputEvent::CompositionEnd`] wrapped as an
+    /// [`InputEvent`]. Dispatch it through the same path as events returned by [`Self::reduce`].
+    ///
+    /// The reducer initially accepts IME messages without changing the window's native input
+    /// context. Call this method at text-focus transitions to make the association explicit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ImeAssociationError`] when Windows cannot update the input-context association.
+    pub fn set_ime_allowed(
+        &mut self,
+        allowed: bool,
+    ) -> Result<Option<InputEvent>, ImeAssociationError> {
+        // SAFETY: `self.hwnd` remains valid by the invariant of `Self::new`.
+        if !unsafe { text::set_ime_allowed(self.hwnd, allowed) } {
+            return Err(ImeAssociationError);
+        }
+
+        self.ime_allowed = allowed;
+        if allowed {
+            self.apply_ime_cursor_area();
+            Ok(None)
+        } else {
+            self.wm_char_decoder = text::WmCharDecoder::default();
+            Ok(self.finish_ime_composition(None))
+        }
+    }
+
+    /// Return whether this reducer accepts IMM32 text-input messages.
+    pub const fn is_ime_allowed(&self) -> bool {
+        self.ime_allowed
+    }
+
+    /// Set the client-space text-cursor area used to position IMM32 UI.
+    ///
+    /// `position` is the upper-left corner of the text cursor and `size` is its extent. Both may
+    /// use physical or logical pixels; logical values are converted with the reducer's current
+    /// scale factor. The area is retained and reapplied after scale-factor changes or when IME
+    /// input is enabled.
+    ///
+    /// Call this whenever the active editor's insertion point moves. The application continues to
+    /// render composition text; Windows renders candidate and other IME-owned UI near this area.
+    pub fn set_ime_cursor_area(&mut self, position: impl Into<Position>, size: impl Into<Size>) {
+        self.ime_cursor_area = Some((position.into(), size.into()));
+        self.apply_ime_cursor_area();
     }
 
     /// Return whether this reducer recognizes `msg`.
@@ -109,6 +177,7 @@ impl WindowMessageReducer {
                 | WM_IME_STARTCOMPOSITION
                 | WM_IME_ENDCOMPOSITION
                 | WM_IME_COMPOSITION
+                | WM_IME_SETCONTEXT
                 | WM_CHAR
                 | WM_MOUSEMOVE
                 | WM_MOUSELEAVE
@@ -179,25 +248,37 @@ impl WindowMessageReducer {
                 wparam,
                 lparam,
                 KeyState::Down,
-                self.ime_composing,
+                self.ime_active,
             ))],
 
             WM_KEYUP | WM_SYSKEYUP => vec![InputEvent::Keyboard(keyboard::from_win32(
                 wparam,
                 lparam,
                 KeyState::Up,
-                self.ime_composing,
+                self.ime_active,
             ))],
             WM_CHAR => text::from_wm_char(&mut self.wm_char_decoder, wparam as u16)
                 .map(|event| InputEvent::Text(vec![event]))
                 .into_iter()
                 .collect(),
-            WM_IME_STARTCOMPOSITION => {
-                self.ime_composing = true;
+            WM_IME_SETCONTEXT => Vec::new(),
+            WM_IME_STARTCOMPOSITION if self.ime_allowed => {
+                self.ime_active = true;
+                self.apply_ime_cursor_area();
                 Vec::new()
             }
-            WM_IME_ENDCOMPOSITION => self.end_ime_composition().into_iter().collect(),
-            WM_IME_COMPOSITION => {
+            WM_IME_ENDCOMPOSITION => {
+                let late_commit = if self.ime_preediting {
+                    // SAFETY: `self.hwnd` is the window that received this message.
+                    unsafe { text::composed_text(self.hwnd) }.filter(|text| !text.is_empty())
+                } else {
+                    None
+                };
+                self.finish_ime_composition(late_commit)
+                    .into_iter()
+                    .collect()
+            }
+            WM_IME_COMPOSITION if self.ime_allowed && self.ime_active => {
                 // SAFETY: `hwnd` is the window that received this message.
                 let events = unsafe { text::from_imm(self.hwnd, lparam) };
                 events
@@ -324,7 +405,7 @@ impl WindowMessageReducer {
 
         Reduction {
             events,
-            response: response_for_message(msg),
+            response: response_for_message(msg, wparam, lparam, self.ime_allowed),
         }
     }
 
@@ -421,6 +502,17 @@ impl WindowMessageReducer {
         }
     }
 
+    fn apply_ime_cursor_area(&self) {
+        if !self.ime_allowed {
+            return;
+        }
+        let Some((position, size)) = self.ime_cursor_area else {
+            return;
+        };
+        // SAFETY: `self.hwnd` remains valid by the invariant of `Self::new`.
+        unsafe { text::set_ime_cursor_area(self.hwnd, position, size, self.scale_factor) };
+    }
+
     fn handle_capture_changed(&mut self) -> Option<InputEvent> {
         if self.primary_state.buttons.is_empty() {
             return None;
@@ -431,9 +523,18 @@ impl WindowMessageReducer {
         ))
     }
 
-    fn end_ime_composition(&mut self) -> Option<InputEvent> {
-        mem::take(&mut self.ime_composing)
-            .then(|| InputEvent::Text(vec![TextInputEvent::CompositionEnd]))
+    fn finish_ime_composition(&mut self, late_commit: Option<String>) -> Option<InputEvent> {
+        self.ime_active = false;
+        let had_preedit = mem::take(&mut self.ime_preediting);
+        let mut events =
+            Vec::with_capacity(usize::from(had_preedit) + usize::from(late_commit.is_some()));
+        if had_preedit {
+            events.push(TextInputEvent::CompositionEnd);
+        }
+        if let Some(text) = late_commit {
+            events.push(TextInputEvent::Insert(TextInsertEvent::new(text)));
+        }
+        (!events.is_empty()).then_some(InputEvent::Text(events))
     }
 
     fn normalize_ime_events(&mut self, events: Vec<TextInputEvent>) -> Vec<TextInputEvent> {
@@ -446,7 +547,7 @@ impl WindowMessageReducer {
         let has_explicit_end = events
             .iter()
             .any(|event| matches!(event, TextInputEvent::CompositionEnd));
-        let should_end_before_commit = (self.ime_composing && has_insert) || has_explicit_end;
+        let should_end_before_commit = (self.ime_preediting && has_insert) || has_explicit_end;
 
         let mut normalized =
             Vec::with_capacity(events.len() + usize::from(should_end_before_commit));
@@ -458,7 +559,13 @@ impl WindowMessageReducer {
                 .into_iter()
                 .filter(|event| !matches!(event, TextInputEvent::CompositionEnd)),
         );
-        self.ime_composing = has_update;
+        if has_update {
+            self.ime_active = true;
+            self.ime_preediting = true;
+        } else if has_insert || has_explicit_end {
+            self.ime_active = false;
+            self.ime_preediting = false;
+        }
         normalized
     }
 
@@ -605,6 +712,13 @@ pub enum InputEvent {
 pub enum MessageResponse {
     /// Pass the message to `DefWindowProcW`.
     Forward,
+    /// Pass the message to `DefWindowProcW` with these parameters instead of the originals.
+    ForwardWithParameters {
+        /// Replacement `wParam`.
+        wparam: WPARAM,
+        /// Replacement `lParam`.
+        lparam: LPARAM,
+    },
     /// Return the contained `LRESULT` without calling `DefWindowProcW`.
     Consume(isize),
     /// Return the contained `LRESULT` if the application handled a translated event;
@@ -621,17 +735,46 @@ pub struct Reduction {
     pub response: MessageResponse,
 }
 
-const fn response_for_message(msg: u32) -> MessageResponse {
+const fn response_for_message(
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+    ime_allowed: bool,
+) -> MessageResponse {
     match msg {
         // The reducer closes the message's touch input handle, so forwarding it would pass an
         // invalid handle to DefWindowProcW.
         WM_TOUCH => MessageResponse::Consume(0),
         // Win32 requires TRUE when an application handles an X-button message.
         WM_XBUTTONDOWN | WM_XBUTTONUP => MessageResponse::ConsumeIfHandled(1),
+        // The application renders preedit text, so retain the system candidate UI but suppress
+        // the legacy IMM32 composition window.
+        WM_IME_SETCONTEXT if ime_allowed => MessageResponse::ForwardWithParameters {
+            wparam,
+            lparam: ime_context_lparam(lparam),
+        },
+        WM_IME_SETCONTEXT => MessageResponse::Forward,
         msg if WindowMessageReducer::handles_message(msg) => MessageResponse::ConsumeIfHandled(0),
         _ => MessageResponse::Forward,
     }
 }
+
+const fn ime_context_lparam(lparam: LPARAM) -> LPARAM {
+    lparam & !(ISC_SHOWUICOMPOSITIONWINDOW as LPARAM)
+}
+
+/// Failure to update a window's IMM32 input-context association.
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImeAssociationError;
+
+impl fmt::Display for ImeAssociationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Windows could not update the IMM32 input-context association")
+    }
+}
+
+impl Error for ImeAssociationError {}
 
 #[derive(Clone, Copy, Debug)]
 enum WheelAxis {
@@ -685,8 +828,12 @@ fn wheel_preference(param: u32) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use dpi::{LogicalPosition, LogicalSize, Position, Size};
     use ui_events::pointer::PointerButton;
-    use ui_events::text::{CompositionState, TextInsertEvent};
+    use ui_events::text::CompositionState;
+    use windows_sys::Win32::UI::Input::Ime::{
+        ISC_SHOWUICANDIDATEWINDOW, ISC_SHOWUICOMPOSITIONWINDOW,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::WM_APP;
 
     fn test_reducer() -> WindowMessageReducer {
@@ -694,7 +841,10 @@ mod tests {
             hwnd: core::ptr::null_mut(),
             scale_factor: 1.0,
             primary_state: PointerState::default(),
-            ime_composing: false,
+            ime_active: false,
+            ime_preediting: false,
+            ime_allowed: true,
+            ime_cursor_area: None,
             wm_char_decoder: text::WmCharDecoder::default(),
             mouse_in_window: false,
             counter: Vec::new(),
@@ -703,20 +853,15 @@ mod tests {
 
     #[test]
     fn message_disposition_preserves_win32_return_contracts() {
-        assert_eq!(response_for_message(WM_TOUCH), MessageResponse::Consume(0));
+        let response = |msg| response_for_message(msg, 0, 0, true);
+        assert_eq!(response(WM_TOUCH), MessageResponse::Consume(0));
         assert_eq!(
-            response_for_message(WM_XBUTTONDOWN),
+            response(WM_XBUTTONDOWN),
             MessageResponse::ConsumeIfHandled(1)
         );
-        assert_eq!(
-            response_for_message(WM_XBUTTONUP),
-            MessageResponse::ConsumeIfHandled(1)
-        );
-        assert_eq!(
-            response_for_message(WM_MOUSEMOVE),
-            MessageResponse::ConsumeIfHandled(0)
-        );
-        assert_eq!(response_for_message(WM_APP), MessageResponse::Forward);
+        assert_eq!(response(WM_XBUTTONUP), MessageResponse::ConsumeIfHandled(1));
+        assert_eq!(response(WM_MOUSEMOVE), MessageResponse::ConsumeIfHandled(0));
+        assert_eq!(response(WM_APP), MessageResponse::Forward);
     }
 
     #[test]
@@ -724,9 +869,56 @@ mod tests {
         assert!(WindowMessageReducer::handles_message(WM_TOUCH));
         assert!(WindowMessageReducer::handles_message(WM_SYSKEYDOWN));
         assert!(WindowMessageReducer::handles_message(WM_CHAR));
+        assert!(WindowMessageReducer::handles_message(WM_IME_SETCONTEXT));
         assert!(WindowMessageReducer::handles_message(WM_MOUSELEAVE));
         assert!(WindowMessageReducer::handles_message(WM_CAPTURECHANGED));
         assert!(!WindowMessageReducer::handles_message(WM_APP));
+    }
+
+    #[test]
+    fn ime_context_forwarding_hides_only_application_rendered_preedit() {
+        let flags = ISC_SHOWUICOMPOSITIONWINDOW | ISC_SHOWUICANDIDATEWINDOW;
+        let filtered = ISC_SHOWUICANDIDATEWINDOW as LPARAM;
+
+        assert_eq!(ime_context_lparam(flags as LPARAM), filtered);
+        assert_eq!(
+            response_for_message(WM_IME_SETCONTEXT, 1, flags as LPARAM, true),
+            MessageResponse::ForwardWithParameters {
+                wparam: 1,
+                lparam: filtered,
+            }
+        );
+        assert_eq!(
+            response_for_message(WM_IME_SETCONTEXT, 1, flags as LPARAM, false),
+            MessageResponse::Forward
+        );
+    }
+
+    #[test]
+    fn logical_ime_cursor_area_scales_to_client_pixels() {
+        let (composition, candidate) = text::ime_forms(
+            Position::from(LogicalPosition::new(10.0, 20.0)),
+            Size::from(LogicalSize::new(2.0, 12.0)),
+            2.0,
+        );
+
+        assert_eq!(
+            (composition.ptCurrentPos.x, composition.ptCurrentPos.y),
+            (20, 64)
+        );
+        assert_eq!(
+            (candidate.ptCurrentPos.x, candidate.ptCurrentPos.y),
+            (20, 40)
+        );
+        assert_eq!(
+            (
+                candidate.rcArea.left,
+                candidate.rcArea.top,
+                candidate.rcArea.right,
+                candidate.rcArea.bottom,
+            ),
+            (20, 40, 24, 64)
+        );
     }
 
     #[test]
@@ -801,7 +993,8 @@ mod tests {
     #[test]
     fn combined_ime_commit_and_update_preserve_both_sides() {
         let mut reducer = test_reducer();
-        reducer.ime_composing = true;
+        reducer.ime_active = true;
+        reducer.ime_preediting = true;
         let events = reducer.normalize_ime_events(vec![
             TextInputEvent::Insert(TextInsertEvent::new("に")),
             TextInputEvent::CompositionUpdate(CompositionState::new("ほ")),
@@ -815,6 +1008,59 @@ mod tests {
                 TextInputEvent::CompositionUpdate(update),
             ] if insert.text == "に" && update.text == "ほ"
         ));
-        assert!(reducer.ime_composing);
+        assert!(reducer.ime_active);
+        assert!(reducer.ime_preediting);
+    }
+
+    #[test]
+    fn ime_commit_ends_preedit_before_inserting_text() {
+        let mut reducer = test_reducer();
+        reducer.ime_active = true;
+        reducer.ime_preediting = true;
+
+        let events =
+            reducer.normalize_ime_events(vec![TextInputEvent::Insert(TextInsertEvent::new("日"))]);
+
+        assert!(matches!(
+            events.as_slice(),
+            [
+                TextInputEvent::CompositionEnd,
+                TextInputEvent::Insert(insert),
+            ] if insert.text == "日"
+        ));
+        assert!(!reducer.ime_active);
+        assert!(!reducer.ime_preediting);
+    }
+
+    #[test]
+    fn ime_end_preserves_a_late_hangul_commit() {
+        let mut reducer = test_reducer();
+        reducer.ime_active = true;
+        reducer.ime_preediting = true;
+
+        let event = reducer.finish_ime_composition(Some("한".to_owned()));
+
+        assert!(matches!(
+            event,
+            Some(InputEvent::Text(events))
+                if matches!(
+                    events.as_slice(),
+                    [
+                        TextInputEvent::CompositionEnd,
+                        TextInputEvent::Insert(insert),
+                    ] if insert.text == "한"
+                )
+        ));
+        assert!(!reducer.ime_active);
+        assert!(!reducer.ime_preediting);
+    }
+
+    #[test]
+    fn ime_session_without_preedit_does_not_emit_composition_end() {
+        let mut reducer = test_reducer();
+        reducer.ime_active = true;
+
+        assert!(reducer.finish_ime_composition(None).is_none());
+        assert!(!reducer.ime_active);
     }
 }

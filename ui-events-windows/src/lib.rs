@@ -25,6 +25,34 @@
 //! IMM32 `WM_IME_*` messages supply composition updates. This crate does not implement a
 //! host-integrated TSF text store or own editor state.
 //!
+//! A text-editing host enables IME input while an editor has focus and keeps the native candidate
+//! UI aligned with its insertion point:
+//!
+//! ```no_run
+//! # #[cfg(windows)]
+//! # mod windows_example {
+//! use dpi::{LogicalPosition, LogicalSize};
+//! use ui_events_windows::{ImeAssociationError, InputEvent, WindowMessageReducer};
+//! use windows_sys::Win32::Foundation::HWND;
+//!
+//! fn configure_text_input(
+//!     hwnd: HWND,
+//!     dispatch: impl FnOnce(InputEvent),
+//! ) -> Result<WindowMessageReducer, ImeAssociationError> {
+//!     // SAFETY: The reducer is created for this window and remains on its window thread.
+//!     let mut reducer = unsafe { WindowMessageReducer::new(hwnd, 2.0) };
+//!     if let Some(event) = reducer.set_ime_allowed(true)? {
+//!         dispatch(event);
+//!     }
+//!     reducer.set_ime_cursor_area(
+//!         LogicalPosition::new(40.0, 24.0),
+//!         LogicalSize::new(1.0, 18.0),
+//!     );
+//!     Ok(reducer)
+//! }
+//! # }
+//! ```
+//!
 //! This crate also handles some side-effecting Win32 calls:
 //!   - It calls `TrackMouseEvent` on mouse enter so that `WM_MOUSELEAVE` is delivered.
 //!   - It calls `SetCapture`/`ReleaseCapture` around button presses so that a drag that leaves
@@ -57,4 +85,6 @@ mod text;
 mod reducer;
 
 #[cfg(windows)]
-pub use reducer::{InputEvent, MessageResponse, Reduction, WindowMessageReducer};
+pub use reducer::{
+    ImeAssociationError, InputEvent, MessageResponse, Reduction, WindowMessageReducer,
+};
