@@ -23,14 +23,20 @@ use windows_sys::Win32::UI::Input::Touch::{
     TOUCHINPUT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    SPI_GETWHEELSCROLLCHARS, SPI_GETWHEELSCROLLLINES, SystemParametersInfoW, WHEEL_DELTA,
-    WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP,
-    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH,
-    WM_XBUTTONDOWN, WM_XBUTTONUP,
+    GetMessageExtraInfo, SPI_GETWHEELSCROLLCHARS, SPI_GETWHEELSCROLLLINES, SystemParametersInfoW,
+    WHEEL_DELTA, WM_CAPTURECHANGED, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION,
+    WM_IME_STARTCOMPOSITION, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+    WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
 use crate::{keyboard, pointer, text};
+
+const PRIMARY_MOUSE: PointerInfo = PointerInfo {
+    pointer_id: Some(PointerId::PRIMARY),
+    persistent_device_id: None,
+    pointer_type: PointerType::Mouse,
+};
 
 /// Manages stateful transformations of raw Win32 window messages for one window.
 ///
@@ -111,6 +117,7 @@ impl WindowMessageReducer {
                 | WM_XBUTTONUP
                 | WM_MOUSEWHEEL
                 | WM_MOUSEHWHEEL
+                | WM_CAPTURECHANGED
                 | WM_TOUCH
         )
     }
@@ -146,15 +153,21 @@ impl WindowMessageReducer {
         lparam: LPARAM,
         time: u64,
     ) -> Reduction {
-        const PRIMARY_MOUSE: PointerInfo = PointerInfo {
-            pointer_id: Some(PointerId::PRIMARY),
-            persistent_device_id: None,
-            pointer_type: PointerType::Mouse,
-        };
-
         self.check_time_monotonic_and_set(time);
         self.primary_state.scale_factor = self.scale_factor;
         self.primary_state.modifiers = keyboard::current_modifiers();
+
+        if is_legacy_mouse_message(msg) {
+            // SAFETY: `GetMessageExtraInfo` only reads metadata associated with the current
+            // thread's message.
+            let extra_info = unsafe { GetMessageExtraInfo() };
+            if pointer::is_promoted_touch(extra_info) {
+                return Reduction {
+                    events: Vec::new(),
+                    response: MessageResponse::Consume(0),
+                };
+            }
+        }
 
         let events = match msg {
             WM_KEYDOWN | WM_SYSKEYDOWN => vec![InputEvent::Keyboard(keyboard::from_win32(
@@ -201,10 +214,7 @@ impl WindowMessageReducer {
                     out.push(InputEvent::Pointer(PointerEvent::Enter(PRIMARY_MOUSE)));
                 }
 
-                self.primary_state.position = PhysicalPosition::new(
-                    (lparam & 0xffff) as i16 as _,
-                    (lparam >> 16 & 0xffff) as i16 as _,
-                );
+                self.primary_state.position = pointer::position_from_lparam(lparam);
 
                 out.push(InputEvent::Pointer(self.attach_count(PointerEvent::Move(
                     PointerUpdate {
@@ -224,6 +234,8 @@ impl WindowMessageReducer {
                 )]
             }
             WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
+                self.primary_state.position = pointer::position_from_lparam(lparam);
+
                 // SAFETY: `self.hwnd` is valid.
                 unsafe { SetCapture(self.hwnd) };
 
@@ -241,6 +253,8 @@ impl WindowMessageReducer {
                 )))]
             }
             WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP | WM_XBUTTONUP => {
+                self.primary_state.position = pointer::position_from_lparam(lparam);
+
                 let button = pointer::button_from_win32(msg, wparam);
                 if let Some(button) = button {
                     self.primary_state.buttons.remove(button);
@@ -261,6 +275,7 @@ impl WindowMessageReducer {
                 )))]
             }
             WM_MOUSEWHEEL => {
+                self.update_wheel_position(lparam);
                 let notches = ((wparam >> 16) as i16) as f32 / WHEEL_DELTA as f32;
                 let lines = notches * scroll_multiplier(SPI_GETWHEELSCROLLLINES);
                 vec![InputEvent::Pointer(PointerEvent::Scroll(
@@ -272,6 +287,7 @@ impl WindowMessageReducer {
                 ))]
             }
             WM_MOUSEHWHEEL => {
+                self.update_wheel_position(lparam);
                 let notches = ((wparam >> 16) as i16) as f32 / WHEEL_DELTA as f32;
                 let characters = notches * scroll_multiplier(SPI_GETWHEELSCROLLCHARS);
                 vec![InputEvent::Pointer(PointerEvent::Scroll(
@@ -284,6 +300,7 @@ impl WindowMessageReducer {
                     },
                 ))]
             }
+            WM_CAPTURECHANGED => self.handle_capture_changed().into_iter().collect(),
             WM_TOUCH => self.handle_touch(wparam, lparam, time),
             _ => Vec::new(),
         };
@@ -332,7 +349,7 @@ impl WindowMessageReducer {
                 unsafe { ScreenToClient(self.hwnd, &mut point) };
 
                 let pointer = PointerInfo {
-                    pointer_id: PointerId::new((event.dwID as u64).saturating_add(1)),
+                    pointer_id: pointer::touch_pointer_id(event.dwID),
                     pointer_type: PointerType::Touch,
                     persistent_device_id: None,
                 };
@@ -376,6 +393,25 @@ impl WindowMessageReducer {
         unsafe { CloseTouchInputHandle(htouch) };
 
         events
+    }
+
+    fn update_wheel_position(&mut self, lparam: LPARAM) {
+        let mut point = pointer::point_from_lparam(lparam);
+        // SAFETY: `self.hwnd` is valid and `point` is a valid `POINT`.
+        if unsafe { ScreenToClient(self.hwnd, &mut point) } != 0 {
+            self.primary_state.position =
+                PhysicalPosition::new(f64::from(point.x), f64::from(point.y));
+        }
+    }
+
+    fn handle_capture_changed(&mut self) -> Option<InputEvent> {
+        if self.primary_state.buttons.is_empty() {
+            return None;
+        }
+        self.primary_state.buttons.clear();
+        Some(InputEvent::Pointer(
+            self.attach_count(PointerEvent::Cancel(PRIMARY_MOUSE)),
+        ))
     }
 
     fn end_ime_composition(&mut self) -> Option<InputEvent> {
@@ -472,7 +508,7 @@ impl WindowMessageReducer {
                 }
             }
             PointerEvent::Cancel(p) | PointerEvent::Leave(p) => {
-                self.counter.retain(|tap| tap.pointer_is(p.pointer_id));
+                self.counter.retain(|tap| !tap.pointer_is(p.pointer_id));
             }
             _ => {}
         }
@@ -487,6 +523,23 @@ impl WindowMessageReducer {
         self.counter
             .retain(|tap| tap.is_down() || tap.is_valid_for(time));
     }
+}
+
+const fn is_legacy_mouse_message(msg: u32) -> bool {
+    matches!(
+        msg,
+        WM_MOUSEMOVE
+            | WM_LBUTTONDOWN
+            | WM_LBUTTONUP
+            | WM_RBUTTONDOWN
+            | WM_RBUTTONUP
+            | WM_MBUTTONDOWN
+            | WM_MBUTTONUP
+            | WM_XBUTTONDOWN
+            | WM_XBUTTONUP
+            | WM_MOUSEWHEEL
+            | WM_MOUSEHWHEEL
+    )
 }
 
 /// A translated input event produced by [`WindowMessageReducer::reduce`].
@@ -558,7 +611,19 @@ fn scroll_multiplier(param: u32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ui_events::pointer::PointerButton;
     use windows_sys::Win32::UI::WindowsAndMessaging::WM_APP;
+
+    fn test_reducer() -> WindowMessageReducer {
+        WindowMessageReducer {
+            hwnd: core::ptr::null_mut(),
+            scale_factor: 1.0,
+            primary_state: PointerState::default(),
+            ime_composing: false,
+            mouse_in_window: false,
+            counter: Vec::new(),
+        }
+    }
 
     #[test]
     fn message_disposition_preserves_win32_return_contracts() {
@@ -583,6 +648,51 @@ mod tests {
         assert!(WindowMessageReducer::handles_message(WM_TOUCH));
         assert!(WindowMessageReducer::handles_message(WM_SYSKEYDOWN));
         assert!(WindowMessageReducer::handles_message(WM_MOUSELEAVE));
+        assert!(WindowMessageReducer::handles_message(WM_CAPTURECHANGED));
         assert!(!WindowMessageReducer::handles_message(WM_APP));
+    }
+
+    #[test]
+    fn cancel_removes_only_the_cancelled_pointers_tap_state() {
+        let mut reducer = test_reducer();
+        let other_pointer = pointer::touch_pointer_id(0);
+        reducer.counter = vec![
+            pointer::TapState {
+                pointer_id: PRIMARY_MOUSE.pointer_id,
+                down_time: 1,
+                up_time: 1,
+                count: 1,
+                x: 0.0,
+                y: 0.0,
+            },
+            pointer::TapState {
+                pointer_id: other_pointer,
+                down_time: 1,
+                up_time: 1,
+                count: 1,
+                x: 0.0,
+                y: 0.0,
+            },
+        ];
+
+        reducer.attach_count(PointerEvent::Cancel(PRIMARY_MOUSE));
+
+        assert_eq!(reducer.counter.len(), 1);
+        assert!(reducer.counter[0].pointer_is(other_pointer));
+    }
+
+    #[test]
+    fn capture_loss_cancels_pressed_mouse_buttons() {
+        let mut reducer = test_reducer();
+        reducer.primary_state.buttons.insert(PointerButton::Primary);
+
+        let event = reducer.handle_capture_changed();
+
+        assert!(reducer.primary_state.buttons.is_empty());
+        assert!(matches!(
+            event,
+            Some(InputEvent::Pointer(PointerEvent::Cancel(pointer)))
+                if pointer == PRIMARY_MOUSE
+        ));
     }
 }
