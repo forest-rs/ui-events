@@ -13,7 +13,7 @@ env:
   RUST_MIN_NO_STD_VER: "1.85"
   # List of packages that will be checked with the minimum supported Rust version.
   # This should be limited to packages that are intended for publishing.
-  RUST_MIN_VER_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-wayland -p ui-events-web -p ui-events-winit -p ui-input-state -p ui-theme"
+  RUST_MIN_VER_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-wayland -p ui-events-web -p ui-events-windows -p ui-events-winit -p ui-input-state -p ui-theme"
   # List of packages that will be checked for `no_std` builds.
   # This should be limited to packages that are intended for publishing.
   RUST_NO_STD_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-wayland -p ui-input-state -p ui-theme"
@@ -124,6 +124,9 @@ jobs:
 
       - name: cargo rdme (ui-events-web)
         run: cargo rdme --workspace-project=ui-events-web --heading-base-level=0 --check
+
+      - name: cargo rdme (ui-events-windows)
+        run: cargo rdme --workspace-project=ui-events-windows --heading-base-level=0 --check
 
       - name: cargo rdme (ui-events-winit)
         run: cargo rdme --workspace-project=ui-events-winit --heading-base-level=0 --check
@@ -401,10 +404,17 @@ jobs:
         run: cargo miri test -p ui-events-wayland --locked --target s390x-unknown-linux-gnu --no-fail-fast
 
   doc:
-    name: cargo doc
-    # NOTE: We don't have any platform specific docs in this workspace, so we only run on Ubuntu.
-    #       If we get per-platform docs (win/macos/linux/wasm32/..) then doc jobs should match that.
-    runs-on: ubuntu-latest
+    name: cargo doc (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - name: workspace
+            os: ubuntu-latest
+            packages: "--workspace"
+          - name: ui-events-windows
+            os: windows-latest
+            packages: "-p ui-events-windows"
     steps:
       - uses: actions/checkout@v4
 
@@ -418,7 +428,7 @@ jobs:
 
       # We test documentation using nightly to match docs.rs.
       - name: cargo doc
-        run: cargo doc --workspace --locked --all-features --no-deps --document-private-items
+        run: cargo doc ${{ matrix.packages }} --locked --all-features --no-deps --document-private-items
         env:
           RUSTDOCFLAGS: '--cfg docsrs -D warnings'
 

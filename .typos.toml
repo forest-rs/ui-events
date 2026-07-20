@@ -8,6 +8,7 @@
 
 # Match Identifier - Case Sensitive
 [default.extend-identifiers]
+TME_LEAVE = "TME_LEAVE"
 
 # Match Inside a Word - Case Insensitive
 [default.extend-words]

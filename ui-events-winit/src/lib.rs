@@ -203,10 +203,7 @@ impl WindowEventReducer {
             WindowEvent::MouseWheel { delta, .. } => Some(WindowEventTranslation::Pointer(
                 PointerEvent::Scroll(PointerScrollEvent {
                     pointer: PRIMARY_MOUSE,
-                    delta: match *delta {
-                        MouseScrollDelta::LineDelta(x, y) => ScrollDelta::LineDelta(x, y),
-                        MouseScrollDelta::PixelDelta(p) => ScrollDelta::PixelDelta(p),
-                    },
+                    delta: scroll_delta_from_winit(*delta),
                     state: self.primary_state.clone(),
                 }),
             )),
@@ -307,6 +304,16 @@ impl WindowEventReducer {
             );
         }
         self.last_seen_time = Some(time);
+    }
+}
+
+fn scroll_delta_from_winit(delta: MouseScrollDelta) -> ScrollDelta {
+    // Winit reports content motion, while ScrollDelta reports viewport navigation.
+    match delta {
+        MouseScrollDelta::LineDelta(x, y) => ScrollDelta::LineDelta(-x, -y),
+        MouseScrollDelta::PixelDelta(p) => {
+            ScrollDelta::PixelDelta(winit::dpi::PhysicalPosition::new(-p.x, -p.y))
+        }
     }
 }
 
@@ -563,6 +570,20 @@ mod tests {
             reducer
                 .reduce(1.0, &WindowEvent::Ime(Ime::Disabled), 3)
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn scroll_delta_converts_content_motion_to_navigation() {
+        assert_eq!(
+            scroll_delta_from_winit(MouseScrollDelta::LineDelta(2.0, -3.0)),
+            ScrollDelta::LineDelta(-2.0, 3.0)
+        );
+        assert_eq!(
+            scroll_delta_from_winit(MouseScrollDelta::PixelDelta(PhysicalPosition::new(
+                -4.0, 5.0
+            ))),
+            ScrollDelta::PixelDelta(PhysicalPosition::new(4.0, -5.0))
         );
     }
 
