@@ -151,7 +151,7 @@ impl<'m> Drop for ImeContext<'m> {
     clippy::cast_possible_truncation,
     reason = "System provided value, should be no data loss."
 )]
-pub unsafe fn from_imm(hwnd: HWND, lparam: LPARAM) -> Option<Vec<TextInputEvent>> {
+pub(crate) unsafe fn from_imm(hwnd: HWND, lparam: LPARAM) -> Option<Vec<TextInputEvent>> {
     // SAFETY: `hwnd` is a valid window handle and `lparam` is a message it received.
     let ctx = unsafe { ImeContext::current(hwnd, &lparam) };
     let flags = lparam as u32;

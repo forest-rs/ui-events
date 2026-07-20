@@ -1,7 +1,7 @@
 // Copyright 2026 the UI Events Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-//! [`EventReducer`]. See the crate-level documentation for an overview.
+//! [`WindowMessageReducer`]. See the crate-level documentation for an overview.
 
 use std::mem;
 
@@ -32,11 +32,11 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 
 use crate::{keyboard, pointer, text};
 
-/// Manages stateful transformations of raw Win32 window messages.
+/// Manages stateful transformations of raw Win32 window messages for one window.
 ///
-/// Store a single instance of this per window, then call [`EventReducer::reduce`] on each relevant
-/// `WM_*` message for that window's `WNDPROC`.
-/// Use the [`Event`] values to receive [`PointerEvent`], [`KeyboardEvent`],
+/// Store a single instance of this per window, then call [`WindowMessageReducer::reduce`] on each
+/// relevant `WM_*` message for that window's `WNDPROC`.
+/// Use the [`InputEvent`] values to receive [`PointerEvent`], [`KeyboardEvent`],
 /// and text-input event batches.
 ///
 /// This handles:
@@ -47,8 +47,12 @@ use crate::{keyboard, pointer, text};
 ///    `WM_MBUTTONDOWN`/`WM_MBUTTONUP`/`WM_XBUTTONDOWN`/`WM_XBUTTONUP`
 ///  - `WM_MOUSEWHEEL`/`WM_MOUSEHWHEEL`
 ///  - `WM_MOUSEMOVE`/`WM_MOUSELEAVE`
-#[derive(Debug, Default)]
-pub struct EventReducer {
+#[derive(Debug)]
+pub struct WindowMessageReducer {
+    /// Window whose messages this reducer processes.
+    hwnd: HWND,
+    /// Physical pixels per logical pixel for this window.
+    scale_factor: f64,
     /// State of the primary mouse pointer.
     primary_state: PointerState,
     /// Whether the window currently has a non-empty IME composition.
@@ -60,13 +64,62 @@ pub struct EventReducer {
     counter: Vec<pointer::TapState>,
 }
 
-impl EventReducer {
+impl WindowMessageReducer {
+    /// Create a reducer for one Win32 window.
+    ///
+    /// Call [`Self::set_scale_factor`] when the window's scale factor changes.
+    ///
+    /// # Safety
+    ///
+    /// `hwnd` must remain a valid window handle until the reducer is dropped or no longer used.
+    pub unsafe fn new(hwnd: HWND, scale_factor: f64) -> Self {
+        Self {
+            hwnd,
+            scale_factor,
+            primary_state: PointerState::default(),
+            ime_composing: false,
+            mouse_in_window: false,
+            counter: Vec::new(),
+        }
+    }
+
+    /// Update the physical-pixels-per-logical-pixel scale for this window.
+    pub fn set_scale_factor(&mut self, scale_factor: f64) {
+        self.scale_factor = scale_factor;
+    }
+
+    /// Return whether this reducer recognizes `msg`.
+    pub const fn handles_message(msg: u32) -> bool {
+        matches!(
+            msg,
+            WM_KEYDOWN
+                | WM_SYSKEYDOWN
+                | WM_KEYUP
+                | WM_SYSKEYUP
+                | WM_IME_STARTCOMPOSITION
+                | WM_IME_ENDCOMPOSITION
+                | WM_IME_COMPOSITION
+                | WM_MOUSEMOVE
+                | WM_MOUSELEAVE
+                | WM_LBUTTONDOWN
+                | WM_RBUTTONDOWN
+                | WM_MBUTTONDOWN
+                | WM_XBUTTONDOWN
+                | WM_LBUTTONUP
+                | WM_RBUTTONUP
+                | WM_MBUTTONUP
+                | WM_XBUTTONUP
+                | WM_MOUSEWHEEL
+                | WM_MOUSEHWHEEL
+                | WM_TOUCH
+        )
+    }
+
     /// Process a raw Win32 window message.
     ///
-    /// `hwnd`, `msg`, `wparam`, and `lparam` are exactly the parameters a `WNDPROC` receives
-    /// for the window this reducer is tracking. Messages this reducer does not recognize produce
-    /// an empty `Vec`. The caller should otherwise continue its normal default processing
-    /// (e.g. calling `DefWindowProcW`) regardless of what this returns.
+    /// `msg`, `wparam`, and `lparam` are exactly the parameters a `WNDPROC` receives for this
+    /// reducer's window. Apply [`Reduction::response`] after dispatching the translated events
+    /// instead of maintaining a second message table in the window procedure.
     ///
     /// `time` is monotonic nanoseconds in the consumer's event-stream clock domain.
     /// Every [`PointerState::time`] produced by this call uses this value.
@@ -79,10 +132,8 @@ impl EventReducer {
     ///
     /// # Safety
     ///
-    ///   - `hwnd` must be a valid handle to a window.
     ///   - `msg`, `wparam` and `lparam` must come from an invocation of the window procedure
-    ///     attached to `hwnd`.
-    ///   - `scale_factor` must be correct for `hwnd`
+    ///     attached to the `hwnd` passed to [`Self::new`].
     ///   - `time` must be nanoseconds timestamp that increases monotonically each call
     #[expect(
         clippy::cast_possible_truncation,
@@ -90,13 +141,11 @@ impl EventReducer {
     )]
     pub unsafe fn reduce(
         &mut self,
-        hwnd: HWND,
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
-        scale_factor: f64,
         time: u64,
-    ) -> Vec<Event> {
+    ) -> Reduction {
         const PRIMARY_MOUSE: PointerInfo = PointerInfo {
             pointer_id: Some(PointerId::PRIMARY),
             persistent_device_id: None,
@@ -104,17 +153,17 @@ impl EventReducer {
         };
 
         self.check_time_monotonic_and_set(time);
-        self.primary_state.scale_factor = scale_factor;
+        self.primary_state.scale_factor = self.scale_factor;
         self.primary_state.modifiers = keyboard::current_modifiers();
 
-        match msg {
-            WM_KEYDOWN | WM_SYSKEYDOWN => vec![Event::Keyboard(keyboard::from_win32(
+        let events = match msg {
+            WM_KEYDOWN | WM_SYSKEYDOWN => vec![InputEvent::Keyboard(keyboard::from_win32(
                 wparam,
                 lparam,
                 KeyState::Down,
             ))],
 
-            WM_KEYUP | WM_SYSKEYUP => vec![Event::Keyboard(keyboard::from_win32(
+            WM_KEYUP | WM_SYSKEYUP => vec![InputEvent::Keyboard(keyboard::from_win32(
                 wparam,
                 lparam,
                 KeyState::Up,
@@ -123,7 +172,7 @@ impl EventReducer {
             WM_IME_ENDCOMPOSITION => self.end_ime_composition().into_iter().collect(),
             WM_IME_COMPOSITION => {
                 // SAFETY: `hwnd` is the window that received this message.
-                let events = unsafe { text::from_imm(hwnd, lparam) };
+                let events = unsafe { text::from_imm(self.hwnd, lparam) };
                 events.map_or_else(Vec::new, |mut events| {
                     let is_commit = matches!(events.first(), Some(TextInputEvent::Insert(_)));
                     let was_composing = mem::replace(
@@ -133,7 +182,7 @@ impl EventReducer {
                     if was_composing && is_commit {
                         events.insert(0, TextInputEvent::CompositionEnd);
                     }
-                    vec![Event::Text(events)]
+                    vec![InputEvent::Text(events)]
                 })
             }
             WM_MOUSEMOVE => {
@@ -143,13 +192,13 @@ impl EventReducer {
                     let mut options = TRACKMOUSEEVENT {
                         cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
                         dwFlags: TME_LEAVE,
-                        hwndTrack: hwnd,
+                        hwndTrack: self.hwnd,
                         dwHoverTime: HOVER_DEFAULT,
                     };
-                    // SAFETY: `options` is fully initialized and `hwnd` is valid.
+                    // SAFETY: `options` is fully initialized and `self.hwnd` is valid.
                     unsafe { TrackMouseEvent(&mut options) };
 
-                    out.push(Event::Pointer(PointerEvent::Enter(PRIMARY_MOUSE)));
+                    out.push(InputEvent::Pointer(PointerEvent::Enter(PRIMARY_MOUSE)));
                 }
 
                 self.primary_state.position = PhysicalPosition::new(
@@ -157,7 +206,7 @@ impl EventReducer {
                     (lparam >> 16 & 0xffff) as i16 as _,
                 );
 
-                out.push(Event::Pointer(self.attach_count(PointerEvent::Move(
+                out.push(InputEvent::Pointer(self.attach_count(PointerEvent::Move(
                     PointerUpdate {
                         pointer: PRIMARY_MOUSE,
                         current: self.primary_state.clone(),
@@ -170,20 +219,20 @@ impl EventReducer {
             }
             WM_MOUSELEAVE => {
                 self.mouse_in_window = false;
-                vec![Event::Pointer(
+                vec![InputEvent::Pointer(
                     self.attach_count(PointerEvent::Leave(PRIMARY_MOUSE)),
                 )]
             }
             WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
-                // SAFETY: `hwnd` is valid.
-                unsafe { SetCapture(hwnd) };
+                // SAFETY: `self.hwnd` is valid.
+                unsafe { SetCapture(self.hwnd) };
 
                 let button = pointer::button_from_win32(msg, wparam);
                 if let Some(button) = button {
                     self.primary_state.buttons.insert(button);
                 }
 
-                vec![Event::Pointer(self.attach_count(PointerEvent::Down(
+                vec![InputEvent::Pointer(self.attach_count(PointerEvent::Down(
                     PointerButtonEvent {
                         pointer: PRIMARY_MOUSE,
                         button,
@@ -203,7 +252,7 @@ impl EventReducer {
                     unsafe { ReleaseCapture() };
                 }
 
-                vec![Event::Pointer(self.attach_count(PointerEvent::Up(
+                vec![InputEvent::Pointer(self.attach_count(PointerEvent::Up(
                     PointerButtonEvent {
                         pointer: PRIMARY_MOUSE,
                         button,
@@ -214,25 +263,34 @@ impl EventReducer {
             WM_MOUSEWHEEL => {
                 let notches = ((wparam >> 16) as i16) as f32 / WHEEL_DELTA as f32;
                 let lines = notches * scroll_multiplier(SPI_GETWHEELSCROLLLINES);
-                vec![Event::Pointer(PointerEvent::Scroll(PointerScrollEvent {
-                    pointer: PRIMARY_MOUSE,
-                    delta: ScrollDelta::LineDelta(0.0, lines),
-                    state: self.primary_state.clone(),
-                }))]
+                vec![InputEvent::Pointer(PointerEvent::Scroll(
+                    PointerScrollEvent {
+                        pointer: PRIMARY_MOUSE,
+                        delta: ScrollDelta::LineDelta(0.0, lines),
+                        state: self.primary_state.clone(),
+                    },
+                ))]
             }
             WM_MOUSEHWHEEL => {
                 let notches = ((wparam >> 16) as i16) as f32 / WHEEL_DELTA as f32;
                 let characters = notches * scroll_multiplier(SPI_GETWHEELSCROLLCHARS);
-                vec![Event::Pointer(PointerEvent::Scroll(PointerScrollEvent {
-                    pointer: PRIMARY_MOUSE,
-                    // NOTE: inverted, MSDN says positive means rightward rotation
-                    //       which means leftward scroll in Windows convention.
-                    delta: ScrollDelta::LineDelta(-characters, 0.0),
-                    state: self.primary_state.clone(),
-                }))]
+                vec![InputEvent::Pointer(PointerEvent::Scroll(
+                    PointerScrollEvent {
+                        pointer: PRIMARY_MOUSE,
+                        // NOTE: inverted, MSDN says positive means rightward rotation
+                        //       which means leftward scroll in Windows convention.
+                        delta: ScrollDelta::LineDelta(-characters, 0.0),
+                        state: self.primary_state.clone(),
+                    },
+                ))]
             }
-            WM_TOUCH => self.handle_touch(hwnd, wparam, lparam, time),
+            WM_TOUCH => self.handle_touch(wparam, lparam, time),
             _ => Vec::new(),
+        };
+
+        Reduction {
+            events,
+            response: response_for_message(msg),
         }
     }
 
@@ -242,13 +300,7 @@ impl EventReducer {
         clippy::cast_possible_truncation,
         reason = "Bitmasked and constant value, no data loss."
     )]
-    fn handle_touch(
-        &mut self,
-        hwnd: HWND,
-        wparam: WPARAM,
-        lparam: LPARAM,
-        time: u64,
-    ) -> Vec<Event> {
+    fn handle_touch(&mut self, wparam: WPARAM, lparam: LPARAM, time: u64) -> Vec<InputEvent> {
         let touch_count = wparam & 0xffff;
         let htouch = lparam as HTOUCHINPUT;
         let mut events = vec![TOUCHINPUT::default(); touch_count];
@@ -276,8 +328,8 @@ impl EventReducer {
                     x: event.x / 100,
                     y: event.y / 100,
                 };
-                // SAFETY: `hwnd` is valid and `point` is a valid `POINT`.
-                unsafe { ScreenToClient(hwnd, &mut point) };
+                // SAFETY: `self.hwnd` is valid and `point` is a valid `POINT`.
+                unsafe { ScreenToClient(self.hwnd, &mut point) };
 
                 let pointer = PointerInfo {
                     pointer_id: PointerId::new((event.dwID as u64).saturating_add(1)),
@@ -316,7 +368,7 @@ impl EventReducer {
                     })
                 };
 
-                Event::Pointer(self.attach_count(event))
+                InputEvent::Pointer(self.attach_count(event))
             })
             .collect();
 
@@ -326,16 +378,16 @@ impl EventReducer {
         events
     }
 
-    fn end_ime_composition(&mut self) -> Option<Event> {
+    fn end_ime_composition(&mut self) -> Option<InputEvent> {
         mem::take(&mut self.ime_composing)
-            .then(|| Event::Text(vec![TextInputEvent::CompositionEnd]))
+            .then(|| InputEvent::Text(vec![TextInputEvent::CompositionEnd]))
     }
 
     fn check_time_monotonic_and_set(&mut self, time: u64) {
         let previous = mem::replace(&mut self.primary_state.time, time);
         debug_assert!(
             time >= previous,
-            "EventReducer::reduce timestamps must be monotonic nanoseconds"
+            "WindowMessageReducer::reduce timestamps must be monotonic nanoseconds"
         );
     }
 
@@ -437,9 +489,9 @@ impl EventReducer {
     }
 }
 
-/// Result of [`EventReducer::reduce`].
+/// A translated input event produced by [`WindowMessageReducer::reduce`].
 #[derive(Debug)]
-pub enum Event {
+pub enum InputEvent {
     /// Resulting [`KeyboardEvent`].
     Keyboard(KeyboardEvent),
     /// Resulting [`PointerEvent`].
@@ -450,6 +502,39 @@ pub enum Event {
     /// For example, committing an active IME composition emits [`TextInputEvent::CompositionEnd`]
     /// followed by the committed [`TextInputEvent::Insert`].
     Text(Vec<TextInputEvent>),
+}
+
+/// Native window-procedure disposition for a reduced message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessageResponse {
+    /// Pass the message to `DefWindowProcW`.
+    Forward,
+    /// Return the contained `LRESULT` without calling `DefWindowProcW`.
+    Consume(isize),
+    /// Return the contained `LRESULT` if the application handled a translated event;
+    /// otherwise pass the message to `DefWindowProcW`.
+    ConsumeIfHandled(isize),
+}
+
+/// Result of [`WindowMessageReducer::reduce`].
+#[derive(Debug)]
+pub struct Reduction {
+    /// Zero or more normalized input events.
+    pub events: Vec<InputEvent>,
+    /// Required native disposition after the application dispatches `events`.
+    pub response: MessageResponse,
+}
+
+const fn response_for_message(msg: u32) -> MessageResponse {
+    match msg {
+        // The reducer closes the message's touch input handle, so forwarding it would pass an
+        // invalid handle to DefWindowProcW.
+        WM_TOUCH => MessageResponse::Consume(0),
+        // Win32 requires TRUE when an application handles an X-button message.
+        WM_XBUTTONDOWN | WM_XBUTTONUP => MessageResponse::ConsumeIfHandled(1),
+        msg if WindowMessageReducer::handles_message(msg) => MessageResponse::ConsumeIfHandled(0),
+        _ => MessageResponse::Forward,
+    }
 }
 
 #[expect(
@@ -468,4 +553,36 @@ fn scroll_multiplier(param: u32) -> f32 {
         multiplier = DEFAULT;
     }
     multiplier as _
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::UI::WindowsAndMessaging::WM_APP;
+
+    #[test]
+    fn message_disposition_preserves_win32_return_contracts() {
+        assert_eq!(response_for_message(WM_TOUCH), MessageResponse::Consume(0));
+        assert_eq!(
+            response_for_message(WM_XBUTTONDOWN),
+            MessageResponse::ConsumeIfHandled(1)
+        );
+        assert_eq!(
+            response_for_message(WM_XBUTTONUP),
+            MessageResponse::ConsumeIfHandled(1)
+        );
+        assert_eq!(
+            response_for_message(WM_MOUSEMOVE),
+            MessageResponse::ConsumeIfHandled(0)
+        );
+        assert_eq!(response_for_message(WM_APP), MessageResponse::Forward);
+    }
+
+    #[test]
+    fn recognized_message_table_matches_disposition_table() {
+        assert!(WindowMessageReducer::handles_message(WM_TOUCH));
+        assert!(WindowMessageReducer::handles_message(WM_SYSKEYDOWN));
+        assert!(WindowMessageReducer::handles_message(WM_MOUSELEAVE));
+        assert!(!WindowMessageReducer::handles_message(WM_APP));
+    }
 }

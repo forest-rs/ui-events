@@ -4,14 +4,18 @@
 //! This crate bridges the raw [Win32 API] window messages (mouse, touch, keyboard, IME, etc.)
 //! into the [`ui-events`] model.
 //!
-//! The primary entry point is [`EventReducer`].
+//! The primary entry point is `WindowMessageReducer`.
 //!
-//! Call [`EventReducer::reduce`] with nanoseconds in the host clock domain so input, timers,
+//! Call `WindowMessageReducer::reduce` with nanoseconds in the host clock domain so input, timers,
 //! frame sampling, submission timestamps, and diagnostics can share one timeline.
 //! The timestamp must be real monotonic nanoseconds, not milliseconds, microseconds, frame counts,
 //! or a constant value. Tap counting uses it for nanosecond-duration thresholds.
 //!
-//! [`EventReducer::reduce`] returns a `Vec` of zero or more translations.
+//! Each call returns both zero or more translations and a `MessageResponse` that tells the
+//! window procedure whether to forward or consume the native message. The distinction matters
+//! for messages such as `WM_TOUCH`, whose native handle is consumed by the reducer, and
+//! `WM_XBUTTON*`, which requires a nonzero result when handled.
+//!
 //! A single raw Win32 message can produce more than one normalized event (for example,
 //! the first `WM_MOUSEMOVE` after the cursor entered the window produces a synthetic
 //! `PointerEvent::Enter` followed by the `Move`, and a single `WM_TOUCH` message can carry
@@ -39,28 +43,14 @@
 )]
 
 #[cfg(windows)]
-pub mod keyboard;
+mod keyboard;
 #[cfg(windows)]
-pub mod pointer;
+mod pointer;
 #[cfg(windows)]
-pub mod text;
+mod text;
 
 #[cfg(windows)]
 mod reducer;
 
 #[cfg(windows)]
-pub use reducer::{Event, EventReducer};
-
-#[cfg(not(windows))]
-pub use dummy::EventReducer;
-
-#[cfg(not(windows))]
-mod dummy {
-    /// Dummy type.
-    #[derive(Debug)]
-    pub struct EventReducer {}
-    impl EventReducer {
-        /// Dummy function.
-        pub fn reduce() {}
-    }
-}
+pub use reducer::{InputEvent, MessageResponse, Reduction, WindowMessageReducer};

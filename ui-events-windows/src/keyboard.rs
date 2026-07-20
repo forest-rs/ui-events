@@ -45,7 +45,7 @@ impl KeyLparam {
 }
 
 /// Convert a Win32 extended scancode into a [`Code`].
-pub fn code_from_scancode(scancode: u16) -> Code {
+pub(crate) fn code_from_scancode(scancode: u16) -> Code {
     match scancode {
         // Chromiuim source reference:
         // https://chromium.googlesource.com/chromium/src.git/+/e6852caa0370ae48fff78d32e7c8406d7a796bc8/ui/events/keycodes/dom/dom_code_data.inc
@@ -371,7 +371,7 @@ fn named_key_from_vkey(key: VIRTUAL_KEY, modifiers: Modifiers) -> Option<NamedKe
 }
 
 /// Query the live state of the modifier keys via `GetKeyState`.
-pub fn current_modifiers() -> Modifiers {
+pub(crate) fn current_modifiers() -> Modifiers {
     let pressed = |vkey: VIRTUAL_KEY| {
         // SAFETY: `GetKeyState` is a pure query function. Any VIRTUAL_KEY is safe to pass.
         let state = unsafe { GetKeyState(vkey as i32) };
@@ -435,7 +435,7 @@ fn char_from_vkey(vkey: VIRTUAL_KEY, scancode: u32) -> Option<char> {
     clippy::cast_possible_truncation,
     reason = "System provided value, should be no data loss."
 )]
-pub fn from_win32(wparam: WPARAM, lparam: LPARAM, state: KeyState) -> KeyboardEvent {
+pub(crate) fn from_win32(wparam: WPARAM, lparam: LPARAM, state: KeyState) -> KeyboardEvent {
     let lparam = KeyLparam::destructure(lparam);
     let key = wparam as VIRTUAL_KEY;
 
