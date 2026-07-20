@@ -277,28 +277,38 @@ impl WindowMessageReducer {
             WM_MOUSEWHEEL => {
                 self.update_wheel_position(lparam);
                 let notches = ((wparam >> 16) as i16) as f32 / WHEEL_DELTA as f32;
-                let lines = notches * scroll_multiplier(SPI_GETWHEELSCROLLLINES);
-                vec![InputEvent::Pointer(PointerEvent::Scroll(
-                    PointerScrollEvent {
+                wheel_delta(
+                    WheelAxis::Vertical,
+                    notches,
+                    wheel_preference(SPI_GETWHEELSCROLLLINES),
+                )
+                .map(|delta| {
+                    InputEvent::Pointer(PointerEvent::Scroll(PointerScrollEvent {
                         pointer: PRIMARY_MOUSE,
-                        delta: ScrollDelta::LineDelta(0.0, lines),
+                        delta,
                         state: self.primary_state.clone(),
-                    },
-                ))]
+                    }))
+                })
+                .into_iter()
+                .collect()
             }
             WM_MOUSEHWHEEL => {
                 self.update_wheel_position(lparam);
                 let notches = ((wparam >> 16) as i16) as f32 / WHEEL_DELTA as f32;
-                let characters = notches * scroll_multiplier(SPI_GETWHEELSCROLLCHARS);
-                vec![InputEvent::Pointer(PointerEvent::Scroll(
-                    PointerScrollEvent {
+                wheel_delta(
+                    WheelAxis::Horizontal,
+                    notches,
+                    wheel_preference(SPI_GETWHEELSCROLLCHARS),
+                )
+                .map(|delta| {
+                    InputEvent::Pointer(PointerEvent::Scroll(PointerScrollEvent {
                         pointer: PRIMARY_MOUSE,
-                        // NOTE: inverted, MSDN says positive means rightward rotation
-                        //       which means leftward scroll in Windows convention.
-                        delta: ScrollDelta::LineDelta(-characters, 0.0),
+                        delta,
                         state: self.primary_state.clone(),
-                    },
-                ))]
+                    }))
+                })
+                .into_iter()
+                .collect()
             }
             WM_CAPTURECHANGED => self.handle_capture_changed().into_iter().collect(),
             WM_TOUCH => self.handle_touch(wparam, lparam, time),
@@ -590,22 +600,53 @@ const fn response_for_message(msg: u32) -> MessageResponse {
     }
 }
 
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "System provided value, should be no data loss."
-)]
-fn scroll_multiplier(param: u32) -> f32 {
+#[derive(Clone, Copy, Debug)]
+enum WheelAxis {
+    Horizontal,
+    Vertical,
+}
+
+fn wheel_delta(axis: WheelAxis, notches: f32, preference: u32) -> Option<ScrollDelta> {
+    if notches == 0.0 || preference == 0 {
+        return None;
+    }
+
+    // Win32 vertical wheel rotation is content motion (positive moves content down), while
+    // ScrollDelta is viewport navigation. Horizontal wheel rotation already has navigation sign.
+    let notches = match axis {
+        WheelAxis::Horizontal => notches,
+        WheelAxis::Vertical => -notches,
+    };
+    let (x, y) = match axis {
+        WheelAxis::Horizontal => (notches, 0.0),
+        WheelAxis::Vertical => (0.0, notches),
+    };
+
+    if preference == u32::MAX {
+        Some(ScrollDelta::PageDelta(x, y))
+    } else {
+        Some(ScrollDelta::LineDelta(
+            x * preference as f32,
+            y * preference as f32,
+        ))
+    }
+}
+
+fn wheel_preference(param: u32) -> u32 {
     /// The default number of lines/characters scrolled per notch of a vertical
     /// or horizontal mouse wheel.
-    const DEFAULT: isize = 3;
+    const DEFAULT: u32 = 3;
 
-    let mut multiplier = DEFAULT;
-    unsafe { SystemParametersInfoW(param, 0, std::ptr::from_mut(&mut multiplier).cast(), 0) };
-    if multiplier as u32 == u32::MAX {
-        // TODO: figure out how to handle page scrolls
-        multiplier = DEFAULT;
+    let mut preference = DEFAULT;
+    // SAFETY: `preference` is a valid pointer to the `UINT` output required by both supported
+    // `SPI_GETWHEELSCROLL*` parameters.
+    if unsafe { SystemParametersInfoW(param, 0, std::ptr::from_mut(&mut preference).cast(), 0) }
+        == 0
+    {
+        DEFAULT
+    } else {
+        preference
     }
-    multiplier as _
 }
 
 #[cfg(test)]
@@ -694,5 +735,30 @@ mod tests {
             Some(InputEvent::Pointer(PointerEvent::Cancel(pointer)))
                 if pointer == PRIMARY_MOUSE
         ));
+    }
+
+    #[test]
+    fn wheel_deltas_use_navigation_direction() {
+        assert_eq!(
+            wheel_delta(WheelAxis::Vertical, 1.0, 3),
+            Some(ScrollDelta::LineDelta(0.0, -3.0))
+        );
+        assert_eq!(
+            wheel_delta(WheelAxis::Horizontal, 1.0, 3),
+            Some(ScrollDelta::LineDelta(3.0, 0.0))
+        );
+    }
+
+    #[test]
+    fn page_scroll_preference_stays_a_page_delta() {
+        assert_eq!(
+            wheel_delta(WheelAxis::Vertical, -1.0, u32::MAX),
+            Some(ScrollDelta::PageDelta(0.0, 1.0))
+        );
+    }
+
+    #[test]
+    fn disabled_wheel_preference_produces_no_scroll() {
+        assert_eq!(wheel_delta(WheelAxis::Vertical, 1.0, 0), None);
     }
 }
