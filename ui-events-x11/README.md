@@ -29,9 +29,10 @@ Input goes through XInput 2 and XKB.
 There is no core-protocol fallback.
 The crate owns no connection: select XInput 2 events, pump the queue, and
 pass each decoded [`x11rb` event] to the [`keyboard`], [`pointer`],
-[`touch`], and [`gesture`] reducers.
+[`touch`], [`gesture`], and [`xim`] reducers.
 Pointer, touch, and gesture take a scale factor and a monotonic nanosecond
 timestamp in the host clock.
+[`xim`] is an XIM client on the same connection.
 [`mapping`] holds the plain-value conversions.
 
 Physical key codes need no system library.
@@ -47,6 +48,7 @@ connection; `dl-libxcb` loads `libxcb` at run time.
 [`x11rb` event]: https://docs.rs/x11rb/latest/x11rb/protocol/enum.Event.html
 [`pointer`]: https://docs.rs/ui-events-x11/latest/ui_events_x11/pointer/
 [`gesture`]: https://docs.rs/ui-events-x11/latest/ui_events_x11/gesture/
+[`xim`]: https://docs.rs/ui-events-x11/latest/ui_events_x11/xim/
 [`ui-events-xkb`]: https://docs.rs/ui-events-xkb/
 [`ui-events`]: https://docs.rs/ui-events/
 
