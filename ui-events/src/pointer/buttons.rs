@@ -1,6 +1,9 @@
 // Copyright 2025 the UI Events Authors
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// Describes a button of a pointer input device, such as a mouse or stylus pen.
 ///
 /// B7..B32 exist for the purpose of supporting pointer devices with
@@ -9,6 +12,7 @@
 /// in practice, and Windows doesn't support more than 32 mouse buttons
 /// in most APIs, therefore 32 was chosen as the upper limit.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u32)]
 pub enum PointerButton {
     /// Primary button, commonly the left mouse button, touch contact, pen contact.
@@ -79,6 +83,7 @@ pub enum PointerButton {
 
 /// A set of [`PointerButton`]s.
 #[derive(Clone, Copy, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerButtons(u32);
 
 impl PointerButtons {

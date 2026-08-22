@@ -41,12 +41,16 @@ use core::num::NonZeroU64;
 use dpi::{LogicalPosition, PhysicalPosition, PhysicalSize};
 use keyboard_types::Modifiers;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::ScrollDelta;
 
 /// A unique identifier for the pointer.
 ///
 /// PointerId(1) is reserved for the primary pointer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerId(NonZeroU64);
 
 impl PointerId {
@@ -76,6 +80,7 @@ impl PointerId {
 ///
 /// PointerId(1) is reserved for the primary pointer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PersistentDeviceId(NonZeroU64);
 
 impl PersistentDeviceId {
@@ -89,6 +94,7 @@ impl PersistentDeviceId {
 /// The type of device that has generated a pointer event.
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[repr(u8)]
 pub enum PointerType {
     /// The type of device could not be determined.
@@ -104,6 +110,7 @@ pub enum PointerType {
 
 /// Identifying information about a pointer, stable across states.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerInfo {
     /// Pointer ID.
     ///
@@ -133,6 +140,7 @@ impl PointerInfo {
 
 /// Orientation of a pointer.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerOrientation {
     /// Spherical altitude.
     ///
@@ -161,6 +169,7 @@ pub type ContactGeometry = PhysicalSize<f64>;
 
 /// A single pointer state.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerState {
     /// Monotonic nanoseconds in the event stream's clock domain.
     ///
@@ -253,6 +262,7 @@ impl Default for PointerState {
 
 /// A pointer update, along with coalesced and predicted states.
 #[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerUpdate {
     /// Identifying information about pointer.
     pub pointer: PointerInfo,
@@ -282,6 +292,7 @@ impl PointerUpdate {
 
 /// An event representing a [`PointerButton`] that was pressed or released.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerButtonEvent {
     /// The [`PointerButton`] that was pressed.
     pub button: Option<PointerButton>,
@@ -293,6 +304,7 @@ pub struct PointerButtonEvent {
 
 /// An event representing a scroll
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerScrollEvent {
     /// Identity of the pointer.
     pub pointer: PointerInfo,
@@ -304,6 +316,7 @@ pub struct PointerScrollEvent {
 
 /// A touchpad gesture for pointer.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PointerGesture {
     /// Pinch delta.
     ///
@@ -322,6 +335,7 @@ pub enum PointerGesture {
 
 /// An event representing a gesture
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PointerGestureEvent {
     /// Identity of the pointer.
     pub pointer: PointerInfo,
@@ -338,6 +352,7 @@ pub struct PointerGestureEvent {
 /// support more event types will use this as a base and add
 /// what they need in a conversion.
 #[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum PointerEvent {
     /// A [`PointerButton`] was pressed.
     Down(PointerButtonEvent),

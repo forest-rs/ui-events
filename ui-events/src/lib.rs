@@ -44,6 +44,7 @@
 //!
 //! - `std` (default): Use the Rust standard library.
 //! - `kurbo`: Add convenience methods for converting positions to `kurbo::Point`.
+//! - `serde`: Implement serde traits for pointer types
 //!
 //! ## Examples
 //!

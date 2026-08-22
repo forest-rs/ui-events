@@ -65,6 +65,7 @@ and [`PointerInfo::is_primary_pointer`](pointer::PointerInfo::is_primary_pointer
 
 - `std` (default): Use the Rust standard library.
 - `kurbo`: Add convenience methods for converting positions to `kurbo::Point`.
+- `serde`: Implement serde traits for pointer types
 
 ## Examples
 

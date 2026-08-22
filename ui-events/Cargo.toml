@@ -17,14 +17,16 @@ targets = []
 
 [features]
 default = ["std"]
-std = ["dpi/std", "keyboard-types/std", "kurbo?/std"]
+std = ["dpi/std", "keyboard-types/std", "kurbo?/std", "serde?/std"]
 libm = ["kurbo?/libm"]
 kurbo = ["dep:kurbo"]
+serde = ["dep:serde", "dpi/serde", "keyboard-types/serde"]
 
 [dependencies]
 dpi = { workspace = true }
 keyboard-types = { version = "0.8.0", default-features = false }
 kurbo = { version = "0.13.0", optional = true, default-features = false }
+serde = { version = "1.0.229", optional = true, default-features = false }
 
 [lints]
 workspace = true
