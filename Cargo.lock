@@ -1403,6 +1403,7 @@ dependencies = [
  "tempfile",
  "ui-events",
  "ui-events-xkb",
+ "ui-text-input",
  "wayland-client",
  "wayland-protocols",
  "xkbcommon",
