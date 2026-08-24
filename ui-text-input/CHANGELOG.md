@@ -8,18 +8,14 @@ Subheadings to categorize changes are `added, changed, deprecated, removed, fixe
 
 # Changelog
 
-UI Events Apple Common has not yet been published.
-
 ## [Unreleased]
 
 This release has an [MSRV][] of 1.85.
 
 ### Added
 
-- `EventDisposition` for preserving native responder routing after host callbacks.
+* Added the initial host-side text-input snapshot and query API.
 
-- Shared `no_std` mapping helpers for the AppKit and UIKit adapters.
-
-[Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/endoli/ui-events/commits/main/ui-text-input
 
 [MSRV]: README.md#minimum-supported-rust-version-msrv

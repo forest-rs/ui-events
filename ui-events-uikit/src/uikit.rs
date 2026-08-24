@@ -9,7 +9,7 @@
 use alloc::string::ToString;
 #[cfg(feature = "gestures")]
 use objc2_core_foundation::CGPoint;
-use objc2_foundation::NSArray;
+use objc2_foundation::{NSArray, NSRange, NSString};
 use objc2_ui_kit::{UIEvent, UITouch, UITouchPhase, UITouchType};
 #[cfg(feature = "gestures")]
 use objc2_ui_kit::{
@@ -27,6 +27,7 @@ use ui_events::pointer::{PointerEvent, PointerState, PointerType};
 #[cfg(feature = "gestures")]
 use ui_events::pointer::{PointerGesture, PointerGestureEvent, PointerScrollEvent};
 use ui_events::pointer::{PointerInfo, PointerUpdate};
+use ui_events::text::TextInputEvent;
 
 fn pointer_type_from_touch(touch: &UITouch) -> PointerType {
     match touch.r#type() {
@@ -513,4 +514,69 @@ pub fn keyboard_event_from_uikey(press: &UIPress, key: &UIKey) -> Option<Keyboar
         is_composing: false,
         repeat: false,
     })
+}
+
+/// Convert committed text from UIKit responder callbacks into a
+/// [`TextInputEvent`].
+///
+/// This is intended for `UIKeyInput::insertText:` or similar text-entry paths
+/// that yield an [`NSString`] rather than a [`UIPress`]/[`UIKey`].
+pub fn insert_text_event_from_nsstring(text: &NSString) -> TextInputEvent {
+    ui_events_apple_common::text::text_insert_event(text.to_string())
+}
+
+/// Build a delete-backward event for UIKit soft-keyboard responder callbacks.
+///
+/// This is intended for `UIKeyInput::deleteBackward`.
+pub const fn delete_backward_text_event() -> TextInputEvent {
+    ui_events_apple_common::text::delete_backward_event()
+}
+
+/// Convert the current marked text snapshot into a composition update event.
+///
+/// This is intended for `UITextInput` implementations that receive marked-text
+/// updates.
+pub fn composition_update_event_from_nsstring(text: &NSString) -> TextInputEvent {
+    ui_events_apple_common::text::composition_update_event_with_utf16_selection(
+        text.to_string(),
+        None,
+        None,
+    )
+    .expect("composition without a selection is always valid")
+}
+
+/// Convert the current marked text snapshot plus its selection into a
+/// composition update event.
+///
+/// This is intended for `UITextInput::setMarkedText:selectedRange:`.
+/// `NSRange::location == usize::MAX` is treated as an absent selected range.
+pub fn composition_update_event_from_nsstring_and_selected_range(
+    text: &NSString,
+    selected_range: NSRange,
+) -> Option<TextInputEvent> {
+    let text = text.to_string();
+    let (selection_location, selection_length) = optional_location_length(selected_range);
+    ui_events_apple_common::text::composition_update_event_with_utf16_selection(
+        text,
+        selection_location,
+        selection_length,
+    )
+}
+
+/// Build a composition-end event for UIKit text-input callbacks.
+pub const fn composition_end_event() -> TextInputEvent {
+    ui_events_apple_common::text::composition_end_event()
+}
+
+fn optional_location_length(range: NSRange) -> (Option<u32>, Option<u32>) {
+    if range.location == usize::MAX {
+        return (None, None);
+    }
+    let Some(location) = u32::try_from(range.location).ok() else {
+        return (Some(u32::MAX), None);
+    };
+    let Some(length) = u32::try_from(range.length).ok() else {
+        return (Some(location), None);
+    };
+    (Some(location), Some(length))
 }

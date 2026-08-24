@@ -1153,6 +1153,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_text_appkit"
+version = "0.3.0"
+dependencies = [
+ "dpi",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "ui-events",
+ "ui-events-appkit",
+ "ui-text-input",
+]
+
+[[package]]
 name = "simple_web"
 version = "0.3.0"
 dependencies = [
@@ -1352,8 +1365,10 @@ dependencies = [
  "libm",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "ui-events",
  "ui-events-apple-common",
+ "ui-text-input",
 ]
 
 [[package]]
@@ -1376,6 +1391,7 @@ dependencies = [
  "objc2-ui-kit 0.3.2",
  "ui-events",
  "ui-events-apple-common",
+ "ui-text-input",
 ]
 
 [[package]]
@@ -1387,6 +1403,7 @@ dependencies = [
  "tempfile",
  "ui-events",
  "ui-events-xkb",
+ "ui-text-input",
  "wayland-client",
  "wayland-protocols",
  "xkbcommon",
@@ -1400,6 +1417,15 @@ dependencies = [
  "js-sys",
  "ui-events",
  "web-sys",
+]
+
+[[package]]
+name = "ui-events-windows"
+version = "0.3.0"
+dependencies = [
+ "dpi",
+ "ui-events",
+ "ui-text-input",
 ]
 
 [[package]]
@@ -1430,6 +1456,14 @@ dependencies = [
 
 [[package]]
 name = "ui-input-state"
+version = "0.3.0"
+dependencies = [
+ "dpi",
+ "ui-events",
+]
+
+[[package]]
+name = "ui-text-input"
 version = "0.3.0"
 dependencies = [
  "dpi",

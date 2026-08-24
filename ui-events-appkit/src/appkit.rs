@@ -7,16 +7,20 @@
 // cfg is handled at the module declaration in lib.rs
 
 use alloc::string::ToString;
+use objc2::runtime::{AnyObject, Sel};
 use objc2_app_kit::{
     NSEvent, NSEventModifierFlags, NSEventSubtype, NSEventType, NSPointingDeviceType,
 };
+use objc2_foundation::{NSAttributedString, NSRange, NSString};
 
 use crate::mapping as map;
+use ui_events::edit::EditCommandEvent;
 use ui_events::keyboard::{Code, Key, KeyState, KeyboardEvent, Location, NamedKey};
 use ui_events::pointer::{
     PointerButtonEvent, PointerEvent, PointerGesture, PointerGestureEvent, PointerScrollEvent,
     PointerType, PointerUpdate,
 };
+use ui_events::text::{TextInputEvent, TextTargetRange};
 
 mod keycodes;
 use keycodes as vk;
@@ -459,6 +463,99 @@ pub fn pointer_event_from_nsevent_at_position(
     })
 }
 
+/// Convert an AppKit `insertText:` payload into a [`TextInputEvent`].
+///
+/// AppKit commonly passes either [`NSString`] or [`NSAttributedString`].
+pub fn insert_text_event_from_nsobject(text: &AnyObject) -> Option<TextInputEvent> {
+    text_from_nsobject(text).map(ui_events_apple_common::text::text_insert_event)
+}
+
+/// Convert an AppKit `insertText:replacementRange:` payload into a
+/// [`TextInputEvent`].
+pub fn insert_text_event_from_nsobject_and_replacement_range(
+    text: &AnyObject,
+    replacement_range: NSRange,
+) -> Option<TextInputEvent> {
+    let text = text_from_nsobject(text)?;
+    let Some((location, length)) = location_length_from_nsrange(replacement_range) else {
+        return Some(ui_events_apple_common::text::text_insert_event(text));
+    };
+    ui_events_apple_common::text::text_insert_event_with_utf16_replacement(text, location, length)
+}
+
+/// Convert an AppKit `setMarkedText:` payload into a composition update event.
+///
+/// AppKit commonly passes either [`NSString`] or [`NSAttributedString`].
+pub fn composition_update_event_from_nsobject(text: &AnyObject) -> Option<TextInputEvent> {
+    ui_events_apple_common::text::composition_update_event_with_utf16_selection(
+        text_from_nsobject(text)?,
+        None,
+        None,
+    )
+}
+
+/// Convert an AppKit `setMarkedText:selectedRange:replacementRange:` payload
+/// into a composition update event.
+pub fn composition_update_event_from_nsobject_and_ranges(
+    text: &AnyObject,
+    selected_range: NSRange,
+    replacement_range: NSRange,
+) -> Option<TextInputEvent> {
+    let text = text_from_nsobject(text)?;
+    let (selection_location, selection_length) = optional_location_length(selected_range);
+    let (replacement_location, replacement_length) = optional_location_length(replacement_range);
+    ui_events_apple_common::text::composition_update_event_with_utf16_ranges(
+        text,
+        selection_location,
+        selection_length,
+        replacement_location,
+        replacement_length,
+    )
+}
+
+/// Build a composition-end event for AppKit `unmarkText`.
+pub const fn composition_end_event() -> TextInputEvent {
+    ui_events_apple_common::text::composition_end_event()
+}
+
+/// Convert an AppKit `doCommandBySelector:` callback into an
+/// [`EditCommandEvent`].
+pub fn edit_command_event_from_selector(selector: Sel) -> Option<EditCommandEvent> {
+    selector
+        .name()
+        .to_str()
+        .ok()
+        .and_then(map::edit_command_from_selector_name)
+}
+
+fn text_from_nsobject(text: &AnyObject) -> Option<alloc::string::String> {
+    if let Some(text) = text.downcast_ref::<NSString>() {
+        return Some(text.to_string());
+    }
+
+    text.downcast_ref::<NSAttributedString>()
+        .map(|text| text.string().to_string())
+}
+
+fn optional_location_length(range: NSRange) -> (Option<u32>, Option<u32>) {
+    location_length_from_nsrange(range).map_or((None, None), |(location, length)| {
+        (Some(location), Some(length))
+    })
+}
+
+fn location_length_from_nsrange(range: NSRange) -> Option<(u32, u32)> {
+    (range.location != ns_not_found()).then_some(())?;
+    let location = u32::try_from(range.location).ok()?;
+    let length = u32::try_from(range.length).ok()?;
+    let _range: TextTargetRange =
+        ui_events_apple_common::text::utf16_range_from_location_length(location, length)?;
+    Some((location, length))
+}
+
+fn ns_not_found() -> usize {
+    usize::MAX
+}
+
 fn map_virtual_keycode_to_code_named_location(code: u16) -> (Code, Option<NamedKey>, Location) {
     use vk as K;
     match code {
@@ -680,6 +777,7 @@ mod tests {
     use super::*;
     use core::cell::Cell;
     use ui_events::pointer::{PointerButton, PointerId, PointerType};
+    use ui_events::text::CompositionState;
 
     #[test]
     fn tablet_pen_mouse_events_keep_pen_identity() {
@@ -853,6 +951,68 @@ mod tests {
         assert_eq!(
             map_virtual_keycode_to_code_named_location(vk::F13),
             (Code::F13, Some(NamedKey::F13), Location::Standard)
+        );
+    }
+
+    #[test]
+    fn nsstring_insert_text_maps_to_text_event() {
+        let text = NSString::from_str("abc");
+        assert_eq!(
+            insert_text_event_from_nsobject(&text),
+            Some(TextInputEvent::insert("abc"))
+        );
+    }
+
+    #[test]
+    fn replacement_range_is_utf16_when_present() {
+        let text = NSString::from_str("x");
+        assert_eq!(
+            insert_text_event_from_nsobject_and_replacement_range(&text, NSRange::new(1, 2)),
+            Some(TextInputEvent::replace(
+                "x",
+                TextTargetRange::utf16_code_units(1, 3)
+            ))
+        );
+    }
+
+    #[test]
+    fn nsnotfound_replacement_range_is_absent() {
+        let text = NSString::from_str("abc");
+        assert_eq!(
+            insert_text_event_from_nsobject_and_replacement_range(
+                &text,
+                NSRange::new(usize::MAX, 0)
+            ),
+            Some(TextInputEvent::insert("abc"))
+        );
+    }
+
+    #[test]
+    fn marked_text_selection_is_converted_to_utf8() {
+        let text = NSString::from_str("a🙂b");
+        assert_eq!(
+            composition_update_event_from_nsobject_and_ranges(
+                &text,
+                NSRange::new(1, 2),
+                NSRange::new(4, 1)
+            ),
+            Some(TextInputEvent::CompositionUpdate(
+                CompositionState::new("a🙂b")
+                    .with_selection(ui_events::text::TextRange::new(1, 5))
+                    .with_replacement_range(TextTargetRange::utf16_code_units(4, 5))
+            ))
+        );
+    }
+
+    #[test]
+    fn nsnotfound_selected_range_is_dropped() {
+        let text = NSString::from_str("ni");
+        let not_found = NSRange::new(usize::MAX, 0);
+        assert_eq!(
+            composition_update_event_from_nsobject_and_ranges(&text, not_found, not_found),
+            Some(TextInputEvent::CompositionUpdate(CompositionState::new(
+                "ni"
+            )))
         );
     }
 }

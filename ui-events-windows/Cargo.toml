@@ -1,0 +1,28 @@
+[package]
+name = "ui-events-windows"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+description = "Value adapters between Windows input APIs and ui-events"
+keywords = ["windows", "tsf", "ime", "input"]
+categories = ["gui"]
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-pc-windows-msvc"
+targets = []
+
+[features]
+default = ["std"]
+std = ["ui-events/std", "ui-text-input/std", "dpi/std"]
+
+[dependencies]
+dpi.workspace = true
+ui-events.workspace = true
+ui-text-input.workspace = true
+
+[lints]
+workspace = true

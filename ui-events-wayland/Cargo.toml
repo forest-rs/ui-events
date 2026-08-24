@@ -19,7 +19,7 @@ targets = []
 default = ["std"]
 # `no_std` builds require `libm`, which supplies the trigonometry the tablet and
 # touch mapping use; see the crate-level documentation.
-std = ["ui-events/std", "ui-events-xkb/std", "dpi/std"]
+std = ["ui-events/std", "ui-events-xkb/std", "ui-text-input/std", "dpi/std"]
 libm = ["dep:libm"]
 # Resolve logical keys, typed text, and authoritative modifiers from the
 # compositor's XKB keymap. This enables `ui-events-xkb`'s `xkb` feature, which
@@ -30,6 +30,7 @@ xkb = ["ui-events-xkb/xkb", "std"]
 
 [dependencies]
 ui-events.workspace = true
+ui-text-input.workspace = true
 dpi.workspace = true
 libm = { version = "0.2.15", optional = true, default-features = false }
 

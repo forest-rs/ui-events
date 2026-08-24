@@ -21,6 +21,7 @@ mod appkit_example {
     use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
     use ui_events::keyboard::KeyboardEvent;
     use ui_events::pointer::PointerEvent as UiPointerEvent;
+    use ui_events_appkit::{AppKitInputResponderHost, EventDisposition};
 
     #[derive(Default, Debug)]
     struct VizState {
@@ -160,18 +161,20 @@ mod appkit_example {
         view: Retained<VizView>,
     }
 
-    impl ui_events_appkit::AppKitInputResponderHost for VizInputHost {
-        fn handle_keyboard_event(&self, event: KeyboardEvent) {
+    impl AppKitInputResponderHost for VizInputHost {
+        fn handle_keyboard_event(&self, event: KeyboardEvent) -> EventDisposition {
             handle_keyboard(&self.view, event);
+            EventDisposition::Handled
         }
 
-        fn handle_pointer_event(&self, event: UiPointerEvent) {
+        fn handle_pointer_event(&self, event: UiPointerEvent) -> EventDisposition {
             if should_clear_hud_from_pointer_event(&self.view, &event) {
                 self.view.ivars().tracker.borrow_mut().clear();
                 self.view.setNeedsDisplay(true);
-                return;
+                return EventDisposition::Handled;
             }
             handle_pointer(&self.view, event);
+            EventDisposition::Handled
         }
 
         fn pointer_position(&self, event: &NSEvent) -> (f64, f64) {

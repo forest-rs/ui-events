@@ -8,7 +8,7 @@ Subheadings to categorize changes are `added, changed, deprecated, removed, fixe
 
 # Changelog
 
-UI Events Apple Common has not yet been published.
+UI Events Windows has not yet been published.
 
 ## [Unreleased]
 
@@ -16,9 +16,9 @@ This release has an [MSRV][] of 1.85.
 
 ### Added
 
-- `EventDisposition` for preserving native responder routing after host callbacks.
-
-- Shared `no_std` mapping helpers for the AppKit and UIKit adapters.
+- Windows TSF value adapters for ACP snapshots, selection direction, text
+  replacement changes, screen geometry, and hit testing.
+- An explicit checklist for the native COM text-store and lock integration.
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
 

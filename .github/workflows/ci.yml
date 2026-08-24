@@ -13,10 +13,34 @@ env:
   RUST_MIN_NO_STD_VER: "1.85"
   # List of packages that will be checked with the minimum supported Rust version.
   # This should be limited to packages that are intended for publishing.
-  RUST_MIN_VER_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-wayland -p ui-events-web -p ui-events-winit -p ui-events-x11 -p ui-events-xkb -p ui-input-state -p ui-theme"
+  RUST_MIN_VER_PKGS: >-
+    -p ui-events
+    -p ui-events-apple-common
+    -p ui-events-appkit
+    -p ui-events-uikit
+    -p ui-events-wayland
+    -p ui-events-web
+    -p ui-events-windows
+    -p ui-events-winit
+    -p ui-events-x11
+    -p ui-events-xkb
+    -p ui-input-state
+    -p ui-text-input
+    -p ui-theme
   # List of packages that will be checked for `no_std` builds.
   # This should be limited to packages that are intended for publishing.
-  RUST_NO_STD_PKGS: "-p ui-events -p ui-events-apple-common -p ui-events-appkit -p ui-events-uikit -p ui-events-wayland -p ui-events-x11 -p ui-events-xkb -p ui-input-state -p ui-theme"
+  RUST_NO_STD_PKGS: >-
+    -p ui-events
+    -p ui-events-apple-common
+    -p ui-events-appkit
+    -p ui-events-uikit
+    -p ui-events-wayland
+    -p ui-events-windows
+    -p ui-events-x11
+    -p ui-events-xkb
+    -p ui-input-state
+    -p ui-text-input
+    -p ui-theme
   # List of features that depend on the standard library and will be excluded from no_std checks.
   # ui-events-wayland's `xkb` reads the keymap fd through `std::fs`, so it implies `std`.
   FEATURES_DEPENDING_ON_STD: "std,default,xkb"
@@ -128,6 +152,9 @@ jobs:
       - name: cargo rdme (ui-events-wayland)
         run: cargo rdme --workspace-project=ui-events-wayland --heading-base-level=0 --check
 
+      - name: cargo rdme (ui-events-windows)
+        run: cargo rdme --workspace-project=ui-events-windows --heading-base-level=0 --check
+
       - name: cargo rdme (ui-events-web)
         run: cargo rdme --workspace-project=ui-events-web --heading-base-level=0 --check
 
@@ -142,6 +169,9 @@ jobs:
 
       - name: cargo rdme (ui-input-state)
         run: cargo rdme --workspace-project=ui-input-state --heading-base-level=0 --check
+
+      - name: cargo rdme (ui-text-input)
+        run: cargo rdme --workspace-project=ui-text-input --heading-base-level=0 --check
 
       - name: cargo rdme (ui-theme)
         run: cargo rdme --workspace-project=ui-theme --heading-base-level=0 --check
@@ -173,7 +203,7 @@ jobs:
           save-if: ${{ github.event_name != 'merge_group' }}
 
       - name: cargo clippy (no_std)
-        run: cargo hack clippy ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none -- -D warnings
+        run: cargo hack clippy ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --ignore-unknown-features --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none -- -D warnings
 
       - name: cargo clippy
         if: runner.os == 'Linux'
@@ -232,7 +262,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_STABLE_VER }}
-          targets: aarch64-apple-ios
+          targets: aarch64-apple-ios, aarch64-apple-ios-macabi
           components: clippy
 
       - name: restore cache
@@ -245,6 +275,12 @@ jobs:
 
       - name: cargo clippy (iOS)
         run: cargo clippy -p ui-events-uikit --locked --all-features --target aarch64-apple-ios -- -D warnings
+
+      - name: cargo check (Mac Catalyst)
+        run: cargo check -p ui-events-uikit --locked --all-features --target aarch64-apple-ios-macabi
+
+      - name: cargo clippy (Mac Catalyst)
+        run: cargo clippy -p ui-events-uikit --locked --all-features --target aarch64-apple-ios-macabi -- -D warnings
 
   test-stable:
     name: cargo test
@@ -375,7 +411,7 @@ jobs:
           save-if: ${{ github.event_name != 'merge_group' }}
 
       - name: cargo check (no_std)
-        run: cargo hack check ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none
+        run: cargo hack check ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --ignore-unknown-features --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none
 
   check-msrv-wasm:
     name: cargo check (msrv) (wasm32)

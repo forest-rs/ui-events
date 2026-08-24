@@ -18,6 +18,10 @@ This release has an [MSRV][] of 1.85.
 
 - AppKit pointer and keyboard adapter helpers.
 - `AppKitInputResponder`, a reusable `NSResponder` for pointer and keyboard input.
+- Native text, composition, replacement-range, and edit-command callback adapters.
+- Safe host-query adapters for AppKit text, ranges, geometry, and hit testing.
+- `AppKitTextInputResponder`, including IME lifecycle notifications and native
+  forwarding for unhandled keyboard and edit-command input.
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
 

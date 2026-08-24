@@ -6,16 +6,19 @@ members = [
     "ui-events-appkit",
     "ui-events-uikit",
     "ui-events-wayland",
+    "ui-events-windows",
     "ui-events-web",
     "ui-events-winit",
     "ui-events-x11",
     "ui-events-xkb",
     "ui-input-state",
+    "ui-text-input",
     "ui-theme",
     "examples/simple",
     "examples/input_tracker",
     "examples/simple_web",
     "examples/simple_appkit",
+    "examples/simple_text_appkit",
 ]
 
 [workspace.package]
@@ -88,4 +91,6 @@ ui-events-apple-common = { version = "0.3.0", path = "ui-events-apple-common", d
 ui-events-appkit = { version = "0.3.0", path = "ui-events-appkit" }
 ui-events-uikit = { version = "0.3.0", path = "ui-events-uikit" }
 ui-events-web = { version = "0.3.0", path = "ui-events-web" }
+ui-events-windows = { version = "0.3.0", path = "ui-events-windows", default-features = false }
 ui-events-xkb = { version = "0.3.0", path = "ui-events-xkb", default-features = false }
+ui-text-input = { version = "0.3.0", path = "ui-text-input", default-features = false }

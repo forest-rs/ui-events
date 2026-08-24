@@ -41,6 +41,10 @@ live in a cross-platform workspace without pulling in platform dependencies.
   `wayland-client` types, so its unit tests run on every target.
 - Stateful reducers that consume `wayland-client` event streams are gated to
   `cfg(target_os = "linux")` and build on these helpers.
+- [`text_input`] provides platform-neutral text-input-v3 values: bounded
+  surrounding text, content type, cursor rectangles, and ordered `done`
+  batches. Proxy focus, commit serials, and double-buffered lifecycle remain
+  the responsibility of a stateful Wayland integration.
 
 ## Coordinates, scale, and time
 

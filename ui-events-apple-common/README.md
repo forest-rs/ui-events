@@ -43,6 +43,8 @@ decide which platform callbacks should become which high-level events.
 - Button helpers translate platform button indexes and bitmasks into
   [`PointerButton`] and [`PointerButtons`].
 - Modifier helpers build [`Modifiers`] from platform modifier bits.
+- [`EventDisposition`] tells responder adapters whether to continue native
+  event routing after a host callback.
 - State helpers build [`PointerState`] and [`ScrollDelta`] from finite raw
   values already extracted by an adapter crate.
 - Text helpers build [`TextInputEvent`] values from UTF-16 ranges used by
