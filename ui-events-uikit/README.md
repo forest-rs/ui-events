@@ -90,6 +90,10 @@ Currently supported:
 
 - [`text`] contains value-based helpers for translating UIKit UTF-16
   location/length pairs and text callbacks into [`TextInputEvent`] values.
+- Native callback helpers accept UIKit's `NSString` and `NSRange` values
+  without making the editor depend on UIKit.
+- [`text_host`] maps synchronous UIKit range, text, geometry, exact hit-test,
+  and closest-position queries onto [`ui_text_input`] capabilities.
 - The reusable `UIKitInputResponder` still does not implement `UIKeyInput`
   or full text-input protocols. Hosts that implement those protocols can use
   the text helpers from their own responder or view.
@@ -99,8 +103,14 @@ Currently supported:
 - `UIKitInputResponder`
 - `keyboard_event_from_uipress`
 - `keyboard_event_from_uikey`
+- `insert_text_event_from_nsstring`
+- `delete_backward_text_event`
+- `composition_update_event_from_nsstring_and_selected_range`
+- `composition_end_event`
 - `text::text_insert_event`
 - `text::composition_update_event_with_utf16_ranges`
+- `text_host::selected_text_range_from_host`
+- `text_host::closest_offset_to_point_from_host`
 - `pointer_event_from_touch_and_event`
 - `pointer_event_from_touch` (uncommon convenience helper)
 - `pointer_scroll_from_uipan` (feature: `gestures`)

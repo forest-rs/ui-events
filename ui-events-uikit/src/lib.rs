@@ -68,6 +68,10 @@
 //!
 //! - [`text`] contains value-based helpers for translating UIKit UTF-16
 //!   location/length pairs and text callbacks into [`TextInputEvent`] values.
+//! - Native callback helpers accept UIKit's `NSString` and `NSRange` values
+//!   without making the editor depend on UIKit.
+//! - [`text_host`] maps synchronous UIKit range, text, geometry, exact hit-test,
+//!   and closest-position queries onto [`ui_text_input`] capabilities.
 //! - The reusable `UIKitInputResponder` still does not implement `UIKeyInput`
 //!   or full text-input protocols. Hosts that implement those protocols can use
 //!   the text helpers from their own responder or view.
@@ -77,8 +81,14 @@
 //! - `UIKitInputResponder`
 //! - `keyboard_event_from_uipress`
 //! - `keyboard_event_from_uikey`
+//! - `insert_text_event_from_nsstring`
+//! - `delete_backward_text_event`
+//! - `composition_update_event_from_nsstring_and_selected_range`
+//! - `composition_end_event`
 //! - `text::text_insert_event`
 //! - `text::composition_update_event_with_utf16_ranges`
+//! - `text_host::selected_text_range_from_host`
+//! - `text_host::closest_offset_to_point_from_host`
 //! - `pointer_event_from_touch_and_event`
 //! - `pointer_event_from_touch` (uncommon convenience helper)
 //! - `pointer_scroll_from_uipan` (feature: `gestures`)
@@ -106,11 +116,19 @@ pub use ui_events_apple_common::text;
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub mod input_responder;
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
+pub mod text_host;
+#[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub mod uikit;
 
 // Top-level re-exports for convenience.
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub use input_responder::{UIKitInputResponder, UIKitInputResponderHost};
+#[cfg(any(target_os = "ios", target_os = "tvos"))]
+pub use uikit::{
+    composition_end_event, composition_update_event_from_nsstring,
+    composition_update_event_from_nsstring_and_selected_range, delete_backward_text_event,
+    insert_text_event_from_nsstring,
+};
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub use uikit::{keyboard_event_from_uikey, keyboard_event_from_uipress};
 #[cfg(any(target_os = "ios", target_os = "tvos"))]

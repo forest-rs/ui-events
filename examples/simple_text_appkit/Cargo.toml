@@ -1,0 +1,38 @@
+[package]
+name = "simple_text_appkit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+dpi.workspace = true
+ui-events.workspace = true
+ui-events-appkit.workspace = true
+ui-text-input.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.2", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSAutoreleasePool",
+    "NSGeometry",
+    "NSString",
+] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSBezierPath",
+    "NSColor",
+    "NSGraphics",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSView",
+    "NSWindow",
+    "NSStringDrawing",
+] }
+
+[lints]
+workspace = true

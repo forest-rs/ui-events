@@ -18,6 +18,8 @@ This release has an [MSRV][] of 1.85.
 
 - UIKit touch, remote, and keyboard adapter helpers.
 - `UIKitInputResponder`, a reusable `UIResponder` for touch, remote, and keyboard input.
+- Native text, composition, and soft-keyboard callback adapters.
+- Host-query adapters for UIKit text, ranges, geometry, and hit testing.
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD
 

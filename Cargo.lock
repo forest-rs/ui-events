@@ -1153,6 +1153,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "simple_text_appkit"
+version = "0.3.0"
+dependencies = [
+ "dpi",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "ui-events",
+ "ui-events-appkit",
+ "ui-text-input",
+]
+
+[[package]]
 name = "simple_web"
 version = "0.3.0"
 dependencies = [
@@ -1352,8 +1365,10 @@ dependencies = [
  "libm",
  "objc2 0.6.4",
  "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "ui-events",
  "ui-events-apple-common",
+ "ui-text-input",
 ]
 
 [[package]]
@@ -1376,6 +1391,7 @@ dependencies = [
  "objc2-ui-kit 0.3.2",
  "ui-events",
  "ui-events-apple-common",
+ "ui-text-input",
 ]
 
 [[package]]

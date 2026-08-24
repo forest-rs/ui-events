@@ -18,6 +18,7 @@ members = [
     "examples/input_tracker",
     "examples/simple_web",
     "examples/simple_appkit",
+    "examples/simple_text_appkit",
 ]
 
 [workspace.package]

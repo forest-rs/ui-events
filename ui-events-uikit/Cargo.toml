@@ -18,7 +18,12 @@ targets = []
 [features]
 default = ["std"]
 libm = ["dep:libm"]
-std = ["ui-events/std", "ui-events-apple-common/std", "dpi/std"]
+std = [
+    "ui-events/std",
+    "ui-events-apple-common/std",
+    "ui-text-input/std",
+    "dpi/std",
+]
 gestures = [
     "objc2-ui-kit/UIGestureRecognizer",
     "objc2-ui-kit/UIPanGestureRecognizer",
@@ -29,6 +34,7 @@ gestures = [
 [dependencies]
 ui-events.workspace = true
 ui-events-apple-common.workspace = true
+ui-text-input.workspace = true
 dpi.workspace = true
 libm = { version = "0.2.15", optional = true, default-features = false }
 
@@ -43,7 +49,9 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
     "std",
     "NSArray",
     "NSEnumerator",
+    "NSRange",
     "NSSet",
+    "NSString",
 ] }
 objc2-ui-kit = { version = "0.3.2", default-features = false, features = [
     "std",

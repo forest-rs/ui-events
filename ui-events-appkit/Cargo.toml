@@ -18,20 +18,36 @@ targets = []
 [features]
 default = ["std"]
 libm = ["dep:libm"]
-std = ["ui-events/std", "ui-events-apple-common/std", "dpi/std"]
+std = [
+    "ui-events/std",
+    "ui-events-apple-common/std",
+    "ui-text-input/std",
+    "dpi/std",
+]
 
 [dependencies]
 ui-events.workspace = true
 ui-events-apple-common.workspace = true
+ui-text-input.workspace = true
 dpi.workspace = true
 libm = { version = "0.2.15", optional = true, default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6.2", default-features = false, features = ["std"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSAttributedString",
+    "NSGeometry",
+    "NSRange",
+    "NSString",
+] }
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
     "std",
     "NSEvent",
     "NSResponder",
+    "NSTextInputClient",
+    "NSTextInputContext",
     "objc2-core-foundation",
 ] }
 
