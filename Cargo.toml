@@ -91,5 +91,6 @@ ui-events-apple-common = { version = "0.3.0", path = "ui-events-apple-common", d
 ui-events-appkit = { version = "0.3.0", path = "ui-events-appkit" }
 ui-events-uikit = { version = "0.3.0", path = "ui-events-uikit" }
 ui-events-web = { version = "0.3.0", path = "ui-events-web" }
+ui-events-windows = { version = "0.3.0", path = "ui-events-windows", default-features = false }
 ui-events-xkb = { version = "0.3.0", path = "ui-events-xkb", default-features = false }
 ui-text-input = { version = "0.3.0", path = "ui-text-input", default-features = false }

@@ -35,6 +35,7 @@ env:
     -p ui-events-appkit
     -p ui-events-uikit
     -p ui-events-wayland
+    -p ui-events-windows
     -p ui-events-x11
     -p ui-events-xkb
     -p ui-input-state

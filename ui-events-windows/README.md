@@ -85,6 +85,14 @@ This crate also handles some side-effecting Win32 calls:
 
 [`ui-events`]: https://docs.rs/ui-events/
 
+Portable TSF value adapters are available in the `tsf` module on every target,
+including `no_std` builds with default features disabled. The Win32
+message reducer requires Windows and the `std` feature (enabled by default).
+The helpers adapt coherent editor snapshots, UTF-16 text ranges, selection
+direction, replacements, and screen geometry for a host-owned text store.
+A host implementing TSF must also own the native COM text-store lifecycle;
+see `NATIVE_INTEGRATION.md`.
+
 <!-- cargo-rdme end -->
 
 ## Minimum supported Rust Version (MSRV)

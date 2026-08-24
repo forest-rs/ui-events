@@ -1425,6 +1425,7 @@ version = "0.3.0"
 dependencies = [
  "dpi",
  "ui-events",
+ "ui-text-input",
  "windows-sys 0.61.2",
 ]
 

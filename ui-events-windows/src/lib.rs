@@ -34,7 +34,7 @@
 //! UI aligned with its insertion point:
 //!
 //! ```no_run
-//! # #[cfg(windows)]
+//! # #[cfg(all(windows, feature = "std"))]
 //! # mod windows_example {
 //! use dpi::{LogicalPosition, LogicalSize};
 //! use ui_events_windows::{ImeAssociationError, InputEvent, WindowMessageReducer};
@@ -65,6 +65,15 @@
 //!
 //! [`ui-events`]: https://docs.rs/ui-events/
 
+//!
+//! Portable TSF value adapters are available in the `tsf` module on every target,
+//! including `no_std` builds with default features disabled. The Win32
+//! message reducer requires Windows and the `std` feature (enabled by default).
+//! The helpers adapt coherent editor snapshots, UTF-16 text ranges, selection
+//! direction, replacements, and screen geometry for a host-owned text store.
+//! A host implementing TSF must also own the native COM text-store lifecycle;
+//! see `NATIVE_INTEGRATION.md`.
+
 // LINEBENDER LINT SET - lib.rs - v3
 // See https://linebender.org/wiki/canonical-lints/
 // These lints shouldn't apply to examples or tests.
@@ -74,22 +83,34 @@
 // Targeting e.g. 32-bit means structs containing usize can give false positives for 64-bit.
 #![cfg_attr(target_pointer_width = "64", warn(clippy::trivially_copy_pass_by_ref))]
 // END LINEBENDER LINT SET
+#![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(
-    windows,
+    all(windows, feature = "std"),
     expect(unsafe_code, reason = "Bridging the raw Win32 API requires FFI calls.")
 )]
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "std"))]
 mod keyboard;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "std"))]
 mod pointer;
-#[cfg(windows)]
+#[cfg(all(windows, feature = "std"))]
 mod text;
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "std"))]
 mod reducer;
 
-#[cfg(windows)]
+#[cfg(all(windows, feature = "std"))]
 pub use reducer::{
     ImeAssociationError, InputEvent, MessageResponse, Reduction, WindowMessageReducer,
+};
+
+extern crate alloc;
+
+pub mod tsf;
+
+pub use tsf::{
+    TSF_DOCUMENT_END, TsfActiveSelectionEnd, TsfDocumentSnapshot, TsfRange, TsfScreenRect,
+    TsfSelection, TsfTextChange, TsfTextExtent, TsfTextReplacement, TsfTextResult,
+    exact_acp_from_screen_point, insert_text_at_selection, nearest_acp_from_screen_point,
+    replace_text, replace_utf16, selection_from_host,
 };

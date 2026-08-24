@@ -3,7 +3,7 @@
 
 //! Exercise the reducer through a real, hidden Win32 window procedure.
 
-#![cfg(windows)]
+#![cfg(all(windows, feature = "std"))]
 #![expect(
     unsafe_code,
     reason = "Tests own hidden Win32 windows and dispatch native messages"
