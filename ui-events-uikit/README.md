@@ -29,10 +29,11 @@ This crate provides lightweight helpers to convert UIKit events into
 [`ui-events`] types, mirroring the style of the `ui-events-web` and
 `ui-events-winit` adapters.
 
-It does not provide a `UIView` implementation for you. Instead, your
-`UIView` or responder should call these helpers from the corresponding
-UIKit callbacks, or install `UIKitInputResponder` as a reusable responder
-for touch, remote, and keyboard input.
+For low-level integration, your `UIView` or responder can call these
+helpers from the corresponding UIKit callbacks, or install
+`UIKitInputResponder` as a reusable responder for touch, remote, and
+keyboard input. For native text input, `UIKitTextInputView` provides a
+hierarchy-backed `UIView` that hosts a caller-owned editor.
 
 Currently supported:
 
@@ -43,7 +44,11 @@ Currently supported:
 - Text-input mapping helpers for committed text, composition updates, and
   UTF-16 replacement ranges
 - `UIKitInputResponder`, a reusable `UIResponder` for touch, remote, and
-  keyboard input
+  keyboard input. Host callbacks return [`EventDisposition`] so unhandled
+  inputs continue through UIKit's normal responder chain.
+- `UIKitTextInputView`, a hierarchy-backed `UIView` implementing
+  `UIKeyInput` and `UITextInput` for soft keyboards, marked text,
+  autocorrection, multistage input, selection, and input geometry.
 
 ## Feature Policy
 
@@ -92,15 +97,16 @@ Currently supported:
   location/length pairs and text callbacks into [`TextInputEvent`] values.
 - Native callback helpers accept UIKit's `NSString` and `NSRange` values
   without making the editor depend on UIKit.
-- [`text_host`] maps synchronous UIKit range, text, geometry, exact hit-test,
+- `text_host` maps synchronous UIKit range, text, geometry, exact hit-test,
   and closest-position queries onto [`ui_text_input`] capabilities.
-- The reusable `UIKitInputResponder` still does not implement `UIKeyInput`
-  or full text-input protocols. Hosts that implement those protocols can use
-  the text helpers from their own responder or view.
+- `UIKitInputResponder` remains a callback adapter and does not own a text
+  input session. Use `UIKitTextInputView` when UIKit must make the adapter a
+  first responder and drive the software keyboard.
 
 ## High-Level Helpers
 
 - `UIKitInputResponder`
+- `UIKitTextInputView`
 - `keyboard_event_from_uipress`
 - `keyboard_event_from_uikey`
 - `insert_text_event_from_nsstring`

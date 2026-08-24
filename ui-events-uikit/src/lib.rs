@@ -7,10 +7,11 @@
 //! [`ui-events`] types, mirroring the style of the `ui-events-web` and
 //! `ui-events-winit` adapters.
 //!
-//! It does not provide a `UIView` implementation for you. Instead, your
-//! `UIView` or responder should call these helpers from the corresponding
-//! UIKit callbacks, or install `UIKitInputResponder` as a reusable responder
-//! for touch, remote, and keyboard input.
+//! For low-level integration, your `UIView` or responder can call these
+//! helpers from the corresponding UIKit callbacks, or install
+//! `UIKitInputResponder` as a reusable responder for touch, remote, and
+//! keyboard input. For native text input, `UIKitTextInputView` provides a
+//! hierarchy-backed `UIView` that hosts a caller-owned editor.
 //!
 //! Currently supported:
 //!
@@ -21,7 +22,11 @@
 //! - Text-input mapping helpers for committed text, composition updates, and
 //!   UTF-16 replacement ranges
 //! - `UIKitInputResponder`, a reusable `UIResponder` for touch, remote, and
-//!   keyboard input
+//!   keyboard input. Host callbacks return [`EventDisposition`] so unhandled
+//!   inputs continue through UIKit's normal responder chain.
+//! - `UIKitTextInputView`, a hierarchy-backed `UIView` implementing
+//!   `UIKeyInput` and `UITextInput` for soft keyboards, marked text,
+//!   autocorrection, multistage input, selection, and input geometry.
 //!
 //! ## Feature Policy
 //!
@@ -70,15 +75,16 @@
 //!   location/length pairs and text callbacks into [`TextInputEvent`] values.
 //! - Native callback helpers accept UIKit's `NSString` and `NSRange` values
 //!   without making the editor depend on UIKit.
-//! - [`text_host`] maps synchronous UIKit range, text, geometry, exact hit-test,
+//! - `text_host` maps synchronous UIKit range, text, geometry, exact hit-test,
 //!   and closest-position queries onto [`ui_text_input`] capabilities.
-//! - The reusable `UIKitInputResponder` still does not implement `UIKeyInput`
-//!   or full text-input protocols. Hosts that implement those protocols can use
-//!   the text helpers from their own responder or view.
+//! - `UIKitInputResponder` remains a callback adapter and does not own a text
+//!   input session. Use `UIKitTextInputView` when UIKit must make the adapter a
+//!   first responder and drive the software keyboard.
 //!
 //! ## High-Level Helpers
 //!
 //! - `UIKitInputResponder`
+//! - `UIKitTextInputView`
 //! - `keyboard_event_from_uipress`
 //! - `keyboard_event_from_uikey`
 //! - `insert_text_event_from_nsstring`
@@ -111,6 +117,7 @@
 extern crate alloc;
 
 pub mod mapping;
+pub use ui_events_apple_common::EventDisposition;
 pub use ui_events_apple_common::text;
 
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
@@ -118,11 +125,15 @@ pub mod input_responder;
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub mod text_host;
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
+pub mod text_input_view;
+#[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub mod uikit;
 
 // Top-level re-exports for convenience.
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub use input_responder::{UIKitInputResponder, UIKitInputResponderHost};
+#[cfg(any(target_os = "ios", target_os = "tvos"))]
+pub use text_input_view::{UIKitSelectionRect, UIKitTextInputView, UIKitTextInputViewHost};
 #[cfg(any(target_os = "ios", target_os = "tvos"))]
 pub use uikit::{
     composition_end_event, composition_update_event_from_nsstring,

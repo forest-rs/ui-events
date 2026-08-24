@@ -203,7 +203,7 @@ jobs:
           save-if: ${{ github.event_name != 'merge_group' }}
 
       - name: cargo clippy (no_std)
-        run: cargo hack clippy ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none -- -D warnings
+        run: cargo hack clippy ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --ignore-unknown-features --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none -- -D warnings
 
       - name: cargo clippy
         if: runner.os == 'Linux'
@@ -262,7 +262,7 @@ jobs:
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_STABLE_VER }}
-          targets: aarch64-apple-ios
+          targets: aarch64-apple-ios, aarch64-apple-ios-macabi
           components: clippy
 
       - name: restore cache
@@ -275,6 +275,12 @@ jobs:
 
       - name: cargo clippy (iOS)
         run: cargo clippy -p ui-events-uikit --locked --all-features --target aarch64-apple-ios -- -D warnings
+
+      - name: cargo check (Mac Catalyst)
+        run: cargo check -p ui-events-uikit --locked --all-features --target aarch64-apple-ios-macabi
+
+      - name: cargo clippy (Mac Catalyst)
+        run: cargo clippy -p ui-events-uikit --locked --all-features --target aarch64-apple-ios-macabi -- -D warnings
 
   test-stable:
     name: cargo test
@@ -405,7 +411,7 @@ jobs:
           save-if: ${{ github.event_name != 'merge_group' }}
 
       - name: cargo check (no_std)
-        run: cargo hack check ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none
+        run: cargo hack check ${{ env.RUST_NO_STD_PKGS }} --locked --optional-deps --each-feature --ignore-unknown-features --exclude-features ${{ env.FEATURES_DEPENDING_ON_STD }} --features libm --target x86_64-unknown-none
 
   check-msrv-wasm:
     name: cargo check (msrv) (wasm32)

@@ -18,6 +18,8 @@ This release has an [MSRV][] of 1.85.
 
 - UIKit touch, remote, and keyboard adapter helpers.
 - `UIKitInputResponder`, a reusable `UIResponder` for touch, remote, and keyboard input.
+- `UIKitTextInputView`, a hierarchy-backed `UIView` implementing `UIKeyInput`
+  and `UITextInput` for software keyboards and multistage input.
 - Native text, composition, and soft-keyboard callback adapters.
 - Host-query adapters for UIKit text, ranges, geometry, and hit testing.
 
