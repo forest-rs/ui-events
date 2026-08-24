@@ -12,6 +12,7 @@ members = [
     "ui-events-x11",
     "ui-events-xkb",
     "ui-input-state",
+    "ui-text-input",
     "ui-theme",
     "examples/simple",
     "examples/input_tracker",
@@ -90,3 +91,4 @@ ui-events-appkit = { version = "0.3.0", path = "ui-events-appkit" }
 ui-events-uikit = { version = "0.3.0", path = "ui-events-uikit" }
 ui-events-web = { version = "0.3.0", path = "ui-events-web" }
 ui-events-xkb = { version = "0.3.0", path = "ui-events-xkb", default-features = false }
+ui-text-input = { version = "0.3.0", path = "ui-text-input", default-features = false }

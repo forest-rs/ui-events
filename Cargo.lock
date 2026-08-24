@@ -1446,6 +1446,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ui-text-input"
+version = "0.3.0"
+dependencies = [
+ "dpi",
+ "ui-events",
+]
+
+[[package]]
 name = "ui-theme"
 version = "0.3.0"
 
