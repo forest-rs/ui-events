@@ -16,6 +16,8 @@ This release has an [MSRV][] of 1.85.
 
 ### Added
 
+- `EventDisposition` for preserving native responder routing after host callbacks.
+
 - Shared `no_std` mapping helpers for the AppKit and UIKit adapters.
 
 [Unreleased]: https://github.com/endoli/ui-events/compare/v0.3.0...HEAD

@@ -21,6 +21,8 @@
 //! - Button helpers translate platform button indexes and bitmasks into
 //!   [`PointerButton`] and [`PointerButtons`].
 //! - Modifier helpers build [`Modifiers`] from platform modifier bits.
+//! - [`EventDisposition`] tells responder adapters whether to continue native
+//!   event routing after a host callback.
 //! - State helpers build [`PointerState`] and [`ScrollDelta`] from finite raw
 //!   values already extracted by an adapter crate.
 //! - Text helpers build [`TextInputEvent`] values from UTF-16 ranges used by
@@ -46,6 +48,7 @@ extern crate alloc;
 mod buttons;
 mod identity;
 mod modifiers;
+mod responder;
 mod state;
 pub mod text;
 
@@ -55,4 +58,5 @@ pub use identity::{
     pointer_info_from_platform_pointer_id, pointer_info_primary_for_type,
 };
 pub use modifiers::modifiers_from_bools;
+pub use responder::EventDisposition;
 pub use state::{pointer_scroll_delta_from_raw, pointer_state_from_raw};

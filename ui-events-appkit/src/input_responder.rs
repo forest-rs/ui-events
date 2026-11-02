@@ -11,16 +11,19 @@ use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_se
 use objc2_app_kit::{NSEvent, NSResponder};
 use ui_events::keyboard::KeyboardEvent;
 use ui_events::pointer::PointerEvent;
+use ui_events_apple_common::EventDisposition;
 
 use crate::{keyboard_event_from_nsevent, pointer_event_from_nsevent_at_position};
 
 /// Host-side event sink for [`AppKitInputResponder`].
 pub trait AppKitInputResponderHost {
-    /// Handle a translated `AppKit` keyboard event.
-    fn handle_keyboard_event(&self, event: KeyboardEvent);
+    /// Handle a translated `AppKit` keyboard event and report whether native
+    /// responder routing should stop.
+    fn handle_keyboard_event(&self, event: KeyboardEvent) -> EventDisposition;
 
-    /// Handle a translated `AppKit` pointer, scroll, gesture, or tablet event.
-    fn handle_pointer_event(&self, event: PointerEvent);
+    /// Handle a translated `AppKit` pointer, scroll, gesture, or tablet event
+    /// and report whether native responder routing should stop.
+    fn handle_pointer_event(&self, event: PointerEvent) -> EventDisposition;
 
     /// Return the pointer position for `event` in the host coordinate space,
     /// measured in logical AppKit points.
@@ -65,102 +68,162 @@ define_class!(
 
         #[unsafe(method(keyDown:))]
         fn key_down(&self, event: &NSEvent) {
-            self.handle_keyboard_nsevent(event);
+            if !self.handle_keyboard_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), keyDown: event] }
+            }
         }
 
         #[unsafe(method(keyUp:))]
         fn key_up(&self, event: &NSEvent) {
-            self.handle_keyboard_nsevent(event);
+            if !self.handle_keyboard_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), keyUp: event] }
+            }
         }
 
         #[unsafe(method(flagsChanged:))]
         fn flags_changed(&self, event: &NSEvent) {
-            self.handle_keyboard_nsevent(event);
+            if !self.handle_keyboard_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), flagsChanged: event] }
+            }
         }
 
         #[unsafe(method(mouseDown:))]
         fn mouse_down(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), mouseDown: event] }
+            }
         }
 
         #[unsafe(method(mouseDragged:))]
         fn mouse_dragged(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), mouseDragged: event] }
+            }
         }
 
         #[unsafe(method(mouseMoved:))]
         fn mouse_moved(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), mouseMoved: event] }
+            }
         }
 
         #[unsafe(method(mouseUp:))]
         fn mouse_up(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), mouseUp: event] }
+            }
         }
 
         #[unsafe(method(rightMouseDown:))]
         fn right_mouse_down(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), rightMouseDown: event] }
+            }
         }
 
         #[unsafe(method(rightMouseDragged:))]
         fn right_mouse_dragged(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), rightMouseDragged: event] }
+            }
         }
 
         #[unsafe(method(rightMouseUp:))]
         fn right_mouse_up(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), rightMouseUp: event] }
+            }
         }
 
         #[unsafe(method(otherMouseDown:))]
         fn other_mouse_down(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), otherMouseDown: event] }
+            }
         }
 
         #[unsafe(method(otherMouseDragged:))]
         fn other_mouse_dragged(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), otherMouseDragged: event] }
+            }
         }
 
         #[unsafe(method(otherMouseUp:))]
         fn other_mouse_up(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), otherMouseUp: event] }
+            }
         }
 
         #[unsafe(method(scrollWheel:))]
         fn scroll_wheel(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), scrollWheel: event] }
+            }
         }
 
         #[unsafe(method(magnifyWithEvent:))]
         fn magnify_with_event(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), magnifyWithEvent: event] }
+            }
         }
 
         #[unsafe(method(rotateWithEvent:))]
         fn rotate_with_event(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), rotateWithEvent: event] }
+            }
         }
 
         #[unsafe(method(tabletPoint:))]
         fn tablet_point(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), tabletPoint: event] }
+            }
         }
 
         #[unsafe(method(tabletProximity:))]
         fn tablet_proximity(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), tabletProximity: event] }
+            }
         }
 
         #[unsafe(method(mouseEntered:))]
         fn mouse_entered(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), mouseEntered: event] }
+            }
         }
 
         #[unsafe(method(mouseExited:))]
         fn mouse_exited(&self, event: &NSEvent) {
-            self.handle_pointer_nsevent(event);
+            if !self.handle_pointer_nsevent(event).is_handled() {
+                // SAFETY: This invokes the overridden method on `NSResponder`.
+                unsafe { msg_send![super(self), mouseExited: event] }
+            }
         }
     }
 );
@@ -174,15 +237,23 @@ impl AppKitInputResponder {
         unsafe { msg_send![super(this), init] }
     }
 
-    /// Translate an `AppKit` keyboard `NSEvent` and forward it to the host.
-    pub fn handle_keyboard_nsevent(&self, event: &NSEvent) {
+    /// Translate an `AppKit` keyboard `NSEvent`, forward it to the host, and
+    /// return the host's disposition.
+    ///
+    /// Events this adapter cannot translate are [`EventDisposition::Unhandled`].
+    pub fn handle_keyboard_nsevent(&self, event: &NSEvent) -> EventDisposition {
         if let Some(event) = keyboard_event_from_nsevent(event) {
-            self.ivars().host.handle_keyboard_event(event);
+            self.ivars().host.handle_keyboard_event(event)
+        } else {
+            EventDisposition::Unhandled
         }
     }
 
-    /// Translate an `AppKit` pointer-related `NSEvent` and forward it to the host.
-    pub fn handle_pointer_nsevent(&self, event: &NSEvent) {
+    /// Translate an `AppKit` pointer-related `NSEvent`, forward it to the host,
+    /// and return the host's disposition.
+    ///
+    /// Events this adapter cannot translate are [`EventDisposition::Unhandled`].
+    pub fn handle_pointer_nsevent(&self, event: &NSEvent) -> EventDisposition {
         let (x, y) = self.ivars().host.pointer_position(event);
         if let Some(event) = pointer_event_from_nsevent_at_position(
             event,
@@ -190,7 +261,9 @@ impl AppKitInputResponder {
             x,
             y,
         ) {
-            self.ivars().host.handle_pointer_event(event);
+            self.ivars().host.handle_pointer_event(event)
+        } else {
+            EventDisposition::Unhandled
         }
     }
 

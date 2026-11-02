@@ -19,6 +19,9 @@ requires `std`.
 
 ### Added
 
+- Value-level text-input-v3 helpers for bounded surrounding text, content type,
+  cursor geometry, and ordered `done` event batches.
+
 - Platform-neutral Wayland input mapping helpers in the `mapping` module:
   evdev pointer-button mapping, surface-local coordinate scaling, scroll-axis
   frame to `ScrollDelta` conversion, pointer and touch identity helpers, touch

@@ -1,0 +1,43 @@
+[package]
+name = "ui-events-windows"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+description = "Win32 input normalization and TSF text-store value adapters"
+publish = false
+keywords = ["windowing", "input", "pointer", "windows"]
+categories = ["graphics", "gui"]
+repository.workspace = true
+rust-version.workspace = true
+
+[package.metadata.docs.rs]
+all-features = true
+default-target = "x86_64-pc-windows-msvc"
+targets = ["x86_64-pc-windows-msvc"]
+
+[features]
+default = ["std"]
+std = ["ui-events/std", "ui-text-input/std", "dpi/std", "dep:windows-sys"]
+
+[dependencies]
+dpi.workspace = true
+ui-events.workspace = true
+ui-text-input.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_SystemServices",
+    "Win32_UI_Controls",
+    "Win32_UI_Input_Ime",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Touch",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[lints]
+workspace = true
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_LibraryLoader"] }

@@ -3,6 +3,7 @@
 
 //! AppKit-specific mapping helpers for building `ui-events` from raw values.
 
+use ui_events::edit::EditCommandEvent;
 use ui_events::pointer::PointerOrientation;
 pub use ui_events_apple_common::{
     buttons_from_bitmask, modifiers_from_bools, pointer_info_from_platform_ids,
@@ -91,6 +92,114 @@ pub fn orientation_from_tilt_fraction(tilt_x: f64, tilt_y: f64) -> PointerOrient
     PointerOrientation { altitude, azimuth }
 }
 
+/// Convert an AppKit `doCommandBySelector:` selector name into an edit command.
+pub fn edit_command_from_selector_name(selector_name: &str) -> Option<EditCommandEvent> {
+    Some(match selector_name {
+        "moveBackward:" => EditCommandEvent::MoveBackward,
+        "moveBackwardAndModifySelection:" => EditCommandEvent::MoveBackwardAndModifySelection,
+        "moveForward:" => EditCommandEvent::MoveForward,
+        "moveForwardAndModifySelection:" => EditCommandEvent::MoveForwardAndModifySelection,
+        "moveLeft:" => EditCommandEvent::MoveLeft,
+        "moveLeftAndModifySelection:" => EditCommandEvent::MoveLeftAndModifySelection,
+        "moveRight:" => EditCommandEvent::MoveRight,
+        "moveRightAndModifySelection:" => EditCommandEvent::MoveRightAndModifySelection,
+        "moveUp:" => EditCommandEvent::MoveUp,
+        "moveUpAndModifySelection:" => EditCommandEvent::MoveUpAndModifySelection,
+        "moveDown:" => EditCommandEvent::MoveDown,
+        "moveDownAndModifySelection:" => EditCommandEvent::MoveDownAndModifySelection,
+        "moveWordBackward:" => EditCommandEvent::MoveWordBackward,
+        "moveWordBackwardAndModifySelection:" => {
+            EditCommandEvent::MoveWordBackwardAndModifySelection
+        }
+        "moveWordForward:" => EditCommandEvent::MoveWordForward,
+        "moveWordForwardAndModifySelection:" => EditCommandEvent::MoveWordForwardAndModifySelection,
+        "moveWordLeft:" => EditCommandEvent::MoveWordLeft,
+        "moveWordLeftAndModifySelection:" => EditCommandEvent::MoveWordLeftAndModifySelection,
+        "moveWordRight:" => EditCommandEvent::MoveWordRight,
+        "moveWordRightAndModifySelection:" => EditCommandEvent::MoveWordRightAndModifySelection,
+        "moveToBeginningOfLine:" => EditCommandEvent::MoveToBeginningOfLine,
+        "moveToBeginningOfLineAndModifySelection:" => {
+            EditCommandEvent::MoveToBeginningOfLineAndModifySelection
+        }
+        "moveToEndOfLine:" => EditCommandEvent::MoveToEndOfLine,
+        "moveToEndOfLineAndModifySelection:" => EditCommandEvent::MoveToEndOfLineAndModifySelection,
+        "moveToLeftEndOfLine:" => EditCommandEvent::MoveToLeftEndOfLine,
+        "moveToLeftEndOfLineAndModifySelection:" => {
+            EditCommandEvent::MoveToLeftEndOfLineAndModifySelection
+        }
+        "moveToRightEndOfLine:" => EditCommandEvent::MoveToRightEndOfLine,
+        "moveToRightEndOfLineAndModifySelection:" => {
+            EditCommandEvent::MoveToRightEndOfLineAndModifySelection
+        }
+        "moveToBeginningOfParagraph:" => EditCommandEvent::MoveToBeginningOfParagraph,
+        "moveToBeginningOfParagraphAndModifySelection:" => {
+            EditCommandEvent::MoveToBeginningOfParagraphAndModifySelection
+        }
+        "moveToEndOfParagraph:" => EditCommandEvent::MoveToEndOfParagraph,
+        "moveToEndOfParagraphAndModifySelection:" => {
+            EditCommandEvent::MoveToEndOfParagraphAndModifySelection
+        }
+        "moveParagraphBackwardAndModifySelection:" => {
+            EditCommandEvent::MoveParagraphBackwardAndModifySelection
+        }
+        "moveParagraphForwardAndModifySelection:" => {
+            EditCommandEvent::MoveParagraphForwardAndModifySelection
+        }
+        "moveToBeginningOfDocument:" => EditCommandEvent::MoveToBeginningOfDocument,
+        "moveToBeginningOfDocumentAndModifySelection:" => {
+            EditCommandEvent::MoveToBeginningOfDocumentAndModifySelection
+        }
+        "moveToEndOfDocument:" => EditCommandEvent::MoveToEndOfDocument,
+        "moveToEndOfDocumentAndModifySelection:" => {
+            EditCommandEvent::MoveToEndOfDocumentAndModifySelection
+        }
+        "pageUp:" => EditCommandEvent::PageUp,
+        "pageUpAndModifySelection:" => EditCommandEvent::PageUpAndModifySelection,
+        "pageDown:" => EditCommandEvent::PageDown,
+        "pageDownAndModifySelection:" => EditCommandEvent::PageDownAndModifySelection,
+        "deleteBackward:" => EditCommandEvent::DeleteBackward,
+        "deleteBackwardByDecomposingPreviousCharacter:" => {
+            EditCommandEvent::DeleteBackwardByDecomposingPreviousCharacter
+        }
+        "deleteForward:" => EditCommandEvent::DeleteForward,
+        "deleteWordBackward:" => EditCommandEvent::DeleteWordBackward,
+        "deleteWordForward:" => EditCommandEvent::DeleteWordForward,
+        "deleteToBeginningOfLine:" => EditCommandEvent::DeleteToBeginningOfLine,
+        "deleteToBeginningOfParagraph:" => EditCommandEvent::DeleteToBeginningOfParagraph,
+        "deleteToEndOfLine:" => EditCommandEvent::DeleteToEndOfLine,
+        "deleteToEndOfParagraph:" => EditCommandEvent::DeleteToEndOfParagraph,
+        "insertBacktab:" => EditCommandEvent::InsertBacktab,
+        "insertLineBreak:" => EditCommandEvent::InsertLineBreak,
+        "insertNewline:" | "insertNewlineIgnoringFieldEditor:" => EditCommandEvent::InsertNewline,
+        "insertParagraphSeparator:" => EditCommandEvent::InsertParagraphSeparator,
+        "insertTab:" | "insertTabIgnoringFieldEditor:" => EditCommandEvent::InsertTab,
+        "insertDoubleQuoteIgnoringSubstitution:" => {
+            EditCommandEvent::InsertDoubleQuoteIgnoringSubstitution
+        }
+        "insertSingleQuoteIgnoringSubstitution:" => {
+            EditCommandEvent::InsertSingleQuoteIgnoringSubstitution
+        }
+        "selectAll:" => EditCommandEvent::SelectAll,
+        "selectLine:" => EditCommandEvent::SelectLine,
+        "selectParagraph:" => EditCommandEvent::SelectParagraph,
+        "selectWord:" => EditCommandEvent::SelectWord,
+        "scrollLineUp:" => EditCommandEvent::ScrollLineUp,
+        "scrollLineDown:" => EditCommandEvent::ScrollLineDown,
+        "scrollPageUp:" => EditCommandEvent::ScrollPageUp,
+        "scrollPageDown:" => EditCommandEvent::ScrollPageDown,
+        "scrollToBeginningOfDocument:" => EditCommandEvent::ScrollToBeginningOfDocument,
+        "scrollToEndOfDocument:" => EditCommandEvent::ScrollToEndOfDocument,
+        "centerSelectionInVisibleArea:" => EditCommandEvent::CenterSelectionInVisibleArea,
+        "transpose:" => EditCommandEvent::Transpose,
+        "capitalizeWord:" => EditCommandEvent::CapitalizeWord,
+        "lowercaseWord:" => EditCommandEvent::LowercaseWord,
+        "uppercaseWord:" => EditCommandEvent::UppercaseWord,
+        "complete:" => EditCommandEvent::Complete,
+        "cancelOperation:" => EditCommandEvent::CancelOperation,
+        _ => return None,
+    })
+}
+
 fn finite_or(value: f64, fallback: f64) -> f64 {
     if value.is_finite() { value } else { fallback }
 }
@@ -140,5 +249,26 @@ mod tests {
         let pointer = pointer_info_from_platform_ids(PointerType::Pen, Some(0), Some(0));
         assert_ne!(pointer.pointer_id, Some(PointerId::PRIMARY));
         assert!(!pointer.is_primary_pointer());
+    }
+
+    #[test]
+    fn selector_names_map_to_edit_commands() {
+        assert_eq!(
+            edit_command_from_selector_name("moveToLeftEndOfLineAndModifySelection:"),
+            Some(EditCommandEvent::MoveToLeftEndOfLineAndModifySelection)
+        );
+        assert_eq!(
+            edit_command_from_selector_name("deleteBackwardByDecomposingPreviousCharacter:"),
+            Some(EditCommandEvent::DeleteBackwardByDecomposingPreviousCharacter)
+        );
+        assert_eq!(
+            edit_command_from_selector_name("insertNewlineIgnoringFieldEditor:"),
+            Some(EditCommandEvent::InsertNewline)
+        );
+        assert_eq!(
+            edit_command_from_selector_name("scrollPageDown:"),
+            Some(EditCommandEvent::ScrollPageDown)
+        );
+        assert_eq!(edit_command_from_selector_name("unknownSelector:"), None);
     }
 }

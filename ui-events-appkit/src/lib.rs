@@ -19,7 +19,11 @@
 //! - Text-input mapping helpers for committed text, composition updates, and
 //!   UTF-16 replacement ranges
 //! - `AppKitInputResponder`, a reusable `NSResponder` for pointer, scroll,
-//!   gesture, tablet, and keyboard input
+//!   gesture, tablet, and keyboard input. Host callbacks return
+//!   [`EventDisposition`] so unhandled events continue through AppKit's normal
+//!   responder chain.
+//! - `AppKitTextInputResponder`, a reusable `NSTextInputClient` responder for
+//!   keyboard, IME, and semantic edit-command callbacks.
 //!
 //! `AppKitInputResponder` intentionally does not implement text input, IME, or
 //! edit-command protocols.
@@ -88,18 +92,30 @@
 //!
 //! - [`text`] contains value-based helpers for translating AppKit UTF-16
 //!   location/length pairs and text callbacks into [`TextInputEvent`] values.
-//! - The reusable `AppKitInputResponder` still does not implement `NSTextInput`
-//!   protocols. Hosts that implement those protocols can use the text helpers
-//!   from their own responder or view.
+//! - Native callback helpers accept AppKit's `NSString`/`NSAttributedString`,
+//!   `NSRange`, and selector values without making the editor depend on AppKit.
+//! - `text_host` maps synchronous AppKit range, text, geometry, and exact
+//!   hit-test queries onto [`ui_text_input`] capabilities.
+//! - `AppKitInputResponder` remains focused on pointer-like input.
+//!   `AppKitTextInputResponder` owns AppKit's text-input context and forwards
+//!   synchronous IME callbacks to a host implementing the query traits.
+//! - The repository's [`simple_text_appkit`] example is a complete custom text
+//!   editor host with marked text, range conversion, geometry, and hit testing.
 //!
 //! ## High-Level Helpers
 //!
 //! - `AppKitInputResponder`
+//! - `AppKitTextInputResponder`
 //! - `pointer_event_from_nsevent`
 //! - `pointer_event_from_nsevent_at_position`
 //! - `keyboard_event_from_nsevent`
+//! - `insert_text_event_from_nsobject_and_replacement_range`
+//! - `composition_update_event_from_nsobject_and_ranges`
+//! - `edit_command_event_from_selector`
 //! - `text::text_insert_event`
 //! - `text::composition_update_event_with_utf16_ranges`
+//! - `text_host::marked_range_from_host`
+//! - `text_host::first_rect_for_character_range_from_host`
 //!
 //! If you prefer, low-level mappers in [`mapping`] let you build events from
 //! raw values (e.g. coordinates, button number, modifier booleans) without
@@ -110,6 +126,7 @@
 //! [`ScrollDelta::PixelDelta`]: ui_events::ScrollDelta::PixelDelta
 //! [`TextInputEvent`]: ui_events::text::TextInputEvent
 //! [`ui-events`]: https://docs.rs/ui-events/
+//! [`simple_text_appkit`]: https://github.com/endoli/ui-events/tree/main/examples/simple_text_appkit
 
 #![allow(unsafe_code, reason = "We access platform libraries using ffi.")]
 #![no_std]
@@ -117,6 +134,7 @@
 extern crate alloc;
 
 pub mod mapping;
+pub use ui_events_apple_common::EventDisposition;
 pub use ui_events_apple_common::text;
 
 #[cfg(target_os = "macos")]
@@ -124,8 +142,18 @@ pub mod appkit;
 #[cfg(target_os = "macos")]
 pub mod input_responder;
 #[cfg(target_os = "macos")]
+pub mod text_host;
+#[cfg(target_os = "macos")]
+pub mod text_input_responder;
+#[cfg(target_os = "macos")]
 pub use appkit::{
-    keyboard_event_from_nsevent, pointer_event_from_nsevent, pointer_event_from_nsevent_at_position,
+    composition_end_event, composition_update_event_from_nsobject,
+    composition_update_event_from_nsobject_and_ranges, edit_command_event_from_selector,
+    insert_text_event_from_nsobject, insert_text_event_from_nsobject_and_replacement_range,
+    keyboard_event_from_nsevent, pointer_event_from_nsevent,
+    pointer_event_from_nsevent_at_position,
 };
 #[cfg(target_os = "macos")]
 pub use input_responder::{AppKitInputResponder, AppKitInputResponderHost};
+#[cfg(target_os = "macos")]
+pub use text_input_responder::{AppKitTextInputResponder, AppKitTextInputResponderHost};
